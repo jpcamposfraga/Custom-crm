@@ -7,14 +7,17 @@
     "crm"
   ],
   "scripts": {
+    "dev": "npm run crm:dev",
     "scrape": "npm run start --workspace=scraper",
     "scrape:dev": "npm run dev --workspace=scraper",
     "crm:dev": "npm run dev --workspace=crm",
     "crm:build": "npm run build --workspace=crm",
     "crm:start": "npm run start --workspace=crm",
-    "test": "npm test --workspaces --if-present"
+    "test": "npm test --workspaces --if-present",
+    "test:e2e": "tsx scripts/test-e2e-pipeline.ts"
   },
   "devDependencies": {
+    "tsx": "^4.19.2",
     "typescript": "^5.7.0"
   }
 }
