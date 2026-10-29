@@ -1,0 +1,20 @@
+{
+  "name": "crm-jpcamposfraga-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "scraper",
+    "crm"
+  ],
+  "scripts": {
+    "scrape": "npm run start --workspace=scraper",
+    "scrape:dev": "npm run dev --workspace=scraper",
+    "crm:dev": "npm run dev --workspace=crm",
+    "crm:build": "npm run build --workspace=crm",
+    "crm:start": "npm run start --workspace=crm",
+    "test": "npm test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
