@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ exists: false });
     }
 
-    let stage = lead.status;
+    let stage: string = lead.status;
     const [card] = await db.select().from(cards).where(eq(cards.lead_id, lead.id)).limit(1);
     if (card) {
       const [col] = await db.select().from(columns).where(eq(columns.id, card.column_id)).limit(1);
