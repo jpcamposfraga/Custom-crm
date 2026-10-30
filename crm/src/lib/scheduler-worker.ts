@@ -2,6 +2,7 @@ import { getDatabase, initDatabase } from '../db';
 import { scheduledMessages, leads } from '../db/schema';
 import { eq, asc, and } from 'drizzle-orm';
 import { generateWhatsAppUrl, type WhatsAppPlatform } from './template-interpolator';
+import { isAutoSendEligible, sendHeadlessMessage } from './whatsapp-headless';
 import { exec } from 'node:child_process';
 
 export type UrlLauncher = (url: string) => Promise<void>;
@@ -120,12 +121,27 @@ export async function checkAndTriggerDueMessages(
       const platformToUse = (item.platform as WhatsAppPlatform) || 'web';
       const url = generateWhatsAppUrl(phone, item.message, platformToUse);
 
-      console.log(
-        `[Scheduler] [${i + 1}/${dueItems.length}] Abrindo WhatsApp para "${item.lead_name || phone}" via ${platformToUse}...`
-      );
+      // Check if auto-send (Playwright Headless) is configured and connected
+      const headlessEligible = await isAutoSendEligible();
 
-      // Trigger via OS launcher (start command)
-      await activeUrlLauncher(url);
+      if (headlessEligible) {
+        console.log(
+          `[Scheduler] [${i + 1}/${dueItems.length}] Disparando WhatsApp HEADLESS para "${item.lead_name || phone}"...`
+        );
+        const headlessResult = await sendHeadlessMessage(phone, item.message);
+        if (!headlessResult.success) {
+          console.warn(
+            `[Scheduler] Falha no envio headless (${headlessResult.error}). Executando fallback via sistema operacional.`
+          );
+          await activeUrlLauncher(url);
+        }
+      } else {
+        console.log(
+          `[Scheduler] [${i + 1}/${dueItems.length}] Abrindo WhatsApp para "${item.lead_name || phone}" via ${platformToUse}...`
+        );
+        // Trigger via OS launcher (start command)
+        await activeUrlLauncher(url);
+      }
 
       // Update message status to 'enviado'
       await db

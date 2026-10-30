@@ -10,6 +10,12 @@ import {
   resetUrlLauncher,
   stopSchedulerWorker,
 } from '../src/lib/scheduler-worker';
+import {
+  setAutomationDriver,
+  resetAutomationDriver,
+  type WhatsAppAutomationDriver,
+} from '../src/lib/whatsapp-headless';
+import { settings } from '../src/db/schema';
 
 describe('Scheduler Worker (Singleton & Sequential Queue)', () => {
   const launchedUrls: string[] = [];
@@ -24,6 +30,7 @@ describe('Scheduler Worker (Singleton & Sequential Queue)', () => {
 
   afterEach(() => {
     resetUrlLauncher();
+    resetAutomationDriver();
     stopSchedulerWorker();
   });
 
@@ -233,5 +240,75 @@ describe('Scheduler Worker (Singleton & Sequential Queue)', () => {
     // Cleanup
     await db.delete(scheduledMessages).where(eq(scheduledMessages.id, msgId));
     await db.delete(leads).where(eq(leads.id, leadId));
+  });
+
+  it('uses headless auto-send when enabled and connected, without opening OS launcher', async () => {
+    const { db } = getDatabase();
+    const leadId = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+
+    await db.insert(leads).values({
+      id: leadId,
+      name: 'Cliente Headless',
+      phone: '19988887777',
+      normalized_phone: '19988887777',
+      has_website: 1,
+      nicho: 'TI',
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+
+    const msgId = crypto.randomUUID();
+    await db.insert(scheduledMessages).values({
+      id: msgId,
+      lead_id: leadId,
+      message: 'Mensagem Headless Automática',
+      scheduled_for: new Date(Date.now() - 5000).toISOString(),
+      status: 'pendente',
+      platform: 'web',
+      created_at: nowIso,
+    });
+
+    // Enable auto-send setting in DB
+    await db
+      .insert(settings)
+      .values({ key: 'auto_send_whatsapp', value: 'true', updated_at: nowIso })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: 'true' },
+      });
+
+    // Configure mock driver to be connected
+    const headlessSent: Array<{ phone: string; message: string }> = [];
+    const mockDriver: WhatsAppAutomationDriver = {
+      getStatus: async () => ({ status: 'connected', qrCode: null }),
+      start: async () => ({ status: 'connected', qrCode: null }),
+      logout: async () => {},
+      send: async (phone: string, message: string) => {
+        headlessSent.push({ phone, message });
+        return { success: true };
+      },
+    };
+    setAutomationDriver(mockDriver);
+
+    const result = await checkAndTriggerDueMessages({ delayBetweenMs: 0 });
+
+    expect(result.processedCount).toBe(1);
+    expect(result.errors).toHaveLength(0);
+
+    // Verified: sent via headless driver, NOT via launchedUrls!
+    expect(headlessSent).toHaveLength(1);
+    expect(headlessSent[0].phone).toBe('19988887777');
+    expect(headlessSent[0].message).toBe('Mensagem Headless Automática');
+    expect(launchedUrls).toHaveLength(0);
+
+    // DB verified
+    const [savedMsg] = await db.select().from(scheduledMessages).where(eq(scheduledMessages.id, msgId));
+    expect(savedMsg.status).toBe('enviado');
+
+    // Cleanup
+    await db.delete(scheduledMessages).where(eq(scheduledMessages.id, msgId));
+    await db.delete(leads).where(eq(leads.id, leadId));
+    await db.delete(settings).where(eq(settings.key, 'auto_send_whatsapp'));
   });
 });
