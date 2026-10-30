@@ -5,7 +5,7 @@ import type { Board, Column, Card, Lead } from '@/types';
 import { BoardSelector } from '@/components/kanban/BoardSelector';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import { WhatsAppModal } from '@/components/whatsapp/WhatsAppModal';
-import { LayoutGrid, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
+import { LayoutGrid, CheckCircle2 } from 'lucide-react';
 
 export default function KanbanPage() {
   const [boards, setBoards] = useState<Board[]>([]);
@@ -105,6 +105,35 @@ export default function KanbanPage() {
     }
   }
 
+  async function handleDeleteBoard(boardId: string) {
+    const boardToDelete = boards.find((b) => b.id === boardId);
+    if (
+      !confirm(
+        `Deseja realmente excluir o quadro "${boardToDelete?.title || 'selecionado'}" e todos os cards contidos nele?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/boards?id=${encodeURIComponent(boardId)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Erro ao excluir quadro');
+        return;
+      }
+      const remaining = boards.filter((b) => b.id !== boardId);
+      if (remaining.length > 0) {
+        setSelectedBoardId(remaining[0].id);
+      }
+      fetchBoards();
+    } catch (err) {
+      console.error('Failed to delete board:', err);
+    }
+  }
+
   async function handleAddCard(columnId: string, title: string, description?: string) {
     try {
       const res = await fetch('/api/cards', {
@@ -200,12 +229,13 @@ export default function KanbanPage() {
         </div>
       </div>
 
-      {/* Board Selector */}
+      {/* Board Selector com suporte a Excluir Quadro */}
       <BoardSelector
         boards={boards}
         selectedBoardId={selectedBoardId}
         onSelectBoard={(id) => setSelectedBoardId(id)}
         onBoardCreated={fetchBoards}
+        onDeleteBoard={handleDeleteBoard}
       />
 
       {/* Kanban Board */}

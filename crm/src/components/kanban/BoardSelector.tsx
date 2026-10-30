@@ -2,13 +2,14 @@
 
 import React, { useState } from 'react';
 import type { Board } from '@/types';
-import { Layers, Plus, Check, X } from 'lucide-react';
+import { Layers, Plus, Check, X, Trash2 } from 'lucide-react';
 
 interface BoardSelectorProps {
   boards: Board[];
   selectedBoardId: string;
   onSelectBoard: (boardId: string) => void;
   onBoardCreated: () => void;
+  onDeleteBoard?: (boardId: string) => void;
 }
 
 export function BoardSelector({
@@ -16,6 +17,7 @@ export function BoardSelector({
   selectedBoardId,
   onSelectBoard,
   onBoardCreated,
+  onDeleteBoard,
 }: BoardSelectorProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -50,6 +52,8 @@ export function BoardSelector({
     }
   }
 
+  const selectedBoard = boards.find((b) => b.id === selectedBoardId);
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
       <div className="flex items-center gap-3">
@@ -72,6 +76,17 @@ export function BoardSelector({
               {b.title}
             </button>
           ))}
+
+          {/* Delete active board button if more than 1 board exists */}
+          {onDeleteBoard && boards.length > 1 && selectedBoard && (
+            <button
+              onClick={() => onDeleteBoard(selectedBoard.id)}
+              title={`Excluir quadro "${selectedBoard.title}"`}
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDatabase, initDatabase } from '@/db';
-import { boards, columns } from '@/db/schema';
+import { boards, columns, cards } from '@/db/schema';
 import { eq, asc } from 'drizzle-orm';
 import crypto from 'crypto';
 
@@ -76,5 +76,37 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error('Create board error:', err);
     return NextResponse.json({ error: err.message || 'Error creating board' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    await initDatabase();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID do quadro é obrigatório' }, { status: 400 });
+    }
+
+    const { db } = getDatabase();
+
+    const allBoards = await db.select().from(boards);
+    if (allBoards.length <= 1) {
+      return NextResponse.json(
+        { error: 'Não é possível excluir o único quadro existente. Crie outro quadro antes.' },
+        { status: 400 }
+      );
+    }
+
+    // Cascade delete cards and columns under this board
+    await db.delete(cards).where(eq(cards.board_id, id));
+    await db.delete(columns).where(eq(columns.board_id, id));
+    await db.delete(boards).where(eq(boards.id, id));
+
+    return NextResponse.json({ success: true, deletedId: id });
+  } catch (err: any) {
+    console.error('Delete board error:', err);
+    return NextResponse.json({ error: err.message || 'Error deleting board' }, { status: 500 });
   }
 }
