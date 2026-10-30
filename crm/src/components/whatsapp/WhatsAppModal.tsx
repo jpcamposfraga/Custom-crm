@@ -19,6 +19,9 @@ import {
   Laptop,
   Smartphone,
   Phone,
+  Zap,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 
 interface WhatsAppModalProps {
@@ -41,6 +44,13 @@ export function WhatsAppModal({ isOpen, lead, onClose, onSent }: WhatsAppModalPr
   const [scheduleSuccess, setScheduleSuccess] = useState<boolean>(false);
   const [loadingSchedule, setLoadingSchedule] = useState<boolean>(false);
 
+  // Headless auto-send state
+  const [autoSendConfigured, setAutoSendConfigured] = useState<boolean>(false);
+  const [sendHeadless, setSendHeadless] = useState<boolean>(false);
+  const [sendingHeadless, setSendingHeadless] = useState<boolean>(false);
+  const [headlessError, setHeadlessError] = useState<string | null>(null);
+  const [headlessSuccess, setHeadlessSuccess] = useState<boolean>(false);
+
   useEffect(() => {
     if (isOpen && lead) {
       fetchTemplates();
@@ -56,10 +66,14 @@ export function WhatsAppModal({ isOpen, lead, onClose, onSent }: WhatsAppModalPr
       setScheduledFor(isoLocal);
       setIsScheduling(false);
       setScheduleSuccess(false);
+      setSendHeadless(false);
+      setHeadlessError(null);
+      setHeadlessSuccess(false);
     } else {
       setMessage('');
       setSelectedTemplateId('');
       setCopied(false);
+      setHeadlessError(null);
     }
   }, [isOpen, lead]);
 
@@ -73,6 +87,14 @@ export function WhatsAppModal({ isOpen, lead, onClose, onSent }: WhatsAppModalPr
         } else {
           setPlatform('web');
         }
+      }
+
+      // Check if headless auto-send is eligible & connected
+      const resStatus = await fetch('/api/whatsapp/status');
+      if (resStatus.ok) {
+        const statusData = await resStatus.json();
+        const eligible = statusData.autoSendEnabled && statusData.status === 'connected';
+        setAutoSendConfigured(eligible);
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
@@ -119,8 +141,43 @@ export function WhatsAppModal({ isOpen, lead, onClose, onSent }: WhatsAppModalPr
   async function handleSendNow() {
     if (!lead || !message.trim()) return;
 
-    // Direct WhatsApp link (Web or App) - skips intermediate wa.me landing page
     const phoneToUse = lead.normalized_phone || lead.phone;
+
+    // Headless dispatch branch
+    if (sendHeadless) {
+      setSendingHeadless(true);
+      setHeadlessError(null);
+      try {
+        const res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: phoneToUse,
+            message: message.trim(),
+            lead_id: lead.id,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setHeadlessSuccess(true);
+          setTimeout(() => {
+            if (onSent) onSent();
+            onClose();
+          }, 1200);
+          return;
+        } else {
+          setHeadlessError(data.error || 'Erro ao enviar mensagem em segundo plano.');
+        }
+      } catch (err: any) {
+        setHeadlessError(err.message || 'Erro de conexão com o servidor.');
+      } finally {
+        setSendingHeadless(false);
+      }
+      return;
+    }
+
+    // Direct WhatsApp link (Web or App) - skips intermediate wa.me landing page
     const url = generateWhatsAppUrl(phoneToUse, message, platform);
 
     // Open direct WhatsApp chat with text populated in input field
@@ -343,6 +400,31 @@ export function WhatsAppModal({ isOpen, lead, onClose, onSent }: WhatsAppModalPr
               placeholder="Digite a mensagem para o lead..."
             />
           </div>
+
+          {/* Optional Headless Auto-Send Toggle */}
+          {!isScheduling && autoSendConfigured && (
+            <div className="flex items-center gap-2.5 p-3 rounded-lg bg-emerald-50/70 border border-emerald-200 text-xs text-slate-800 animate-in fade-in">
+              <input
+                type="checkbox"
+                id="send-headless-check"
+                checked={sendHeadless}
+                onChange={(e) => setSendHeadless(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+              />
+              <label htmlFor="send-headless-check" className="cursor-pointer font-medium flex items-center gap-1.5 select-none">
+                <Zap className="w-4 h-4 text-amber-500" />
+                <span>Enviar automaticamente em segundo plano (sem abrir navegador)</span>
+              </label>
+            </div>
+          )}
+
+          {/* Headless Error Banner */}
+          {headlessError && (
+            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+              <span>{headlessError}</span>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -357,11 +439,31 @@ export function WhatsAppModal({ isOpen, lead, onClose, onSent }: WhatsAppModalPr
           {!isScheduling ? (
             <button
               onClick={handleSendNow}
-              disabled={!message.trim()}
-              className="px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+              disabled={!message.trim() || sendingHeadless || headlessSuccess}
+              className={`px-5 py-2 text-xs font-semibold text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5 ${
+                sendHeadless
+                  ? 'bg-amber-600 hover:bg-amber-700 disabled:opacity-75'
+                  : 'bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50'
+              } disabled:cursor-not-allowed`}
             >
-              <Send className="w-3.5 h-3.5" />
-              {platform === 'web' ? 'Abrir no WhatsApp Web' : 'Abrir no WhatsApp Desktop'}
+              {sendingHeadless ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Enviando pelo robô...
+                </>
+              ) : headlessSuccess ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-200" /> Enviado com Sucesso!
+                </>
+              ) : sendHeadless ? (
+                <>
+                  <Zap className="w-3.5 h-3.5" /> Disparar em Segundo Plano
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  {platform === 'web' ? 'Abrir no WhatsApp Web' : 'Abrir no WhatsApp Desktop'}
+                </>
+              )}
             </button>
           ) : (
             <button
