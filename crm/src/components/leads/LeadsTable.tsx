@@ -7,10 +7,8 @@ import {
   ExternalLink,
   MessageCircle,
   CheckCircle,
-  XCircle,
   Trash2,
   MapPin,
-  Clock,
   Phone,
 } from 'lucide-react';
 
@@ -73,15 +71,20 @@ export function LeadsTable({
               const currentStatus = lead.status || 'novo';
               const badge = statusBadgeStyles[currentStatus] || statusBadgeStyles.novo;
               const isConverted = currentStatus === 'convertido';
+              const hasPhone = Boolean(lead.phone && lead.phone.trim() && lead.phone.toLowerCase() !== 'null');
 
               return (
                 <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors">
-                  {/* Empresa / Contato */}
+                  {/* Empresa / Contato com Telefone sempre exibido abaixo do nome */}
                   <td className="py-3.5 px-4">
                     <div className="font-semibold text-slate-900 text-sm">{lead.name}</div>
-                    <div className="flex items-center gap-1.5 text-slate-500 text-xs mt-0.5">
-                      <Phone className="w-3 h-3 text-slate-400" />
-                      <span>{lead.phone}</span>
+                    <div className="flex items-center gap-1.5 text-xs mt-0.5">
+                      <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                      {hasPhone ? (
+                        <span className="text-slate-600 font-medium">{lead.phone}</span>
+                      ) : (
+                        <span className="text-slate-400 italic">Telefone não encontrado</span>
+                      )}
                     </div>
                     {lead.notes && (
                       <div className="text-[11px] text-slate-400 italic mt-0.5 max-w-xs truncate">
@@ -142,14 +145,16 @@ export function LeadsTable({
                   {/* Quick Actions */}
                   <td className="py-3.5 px-4">
                     <div className="flex items-center justify-center gap-2">
-                      {/* WhatsApp Button */}
-                      <button
-                        onClick={() => onOpenWhatsApp(lead)}
-                        title="Enviar mensagem WhatsApp"
-                        className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                      </button>
+                      {/* Botão de WhatsApp exibido SOMENTE se o telefone existir */}
+                      {hasPhone ? (
+                        <button
+                          onClick={() => onOpenWhatsApp(lead)}
+                          title="Enviar mensagem WhatsApp"
+                          className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                        </button>
+                      ) : null}
 
                       {/* Quick Convert Toggle */}
                       <button

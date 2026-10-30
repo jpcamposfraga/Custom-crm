@@ -7,9 +7,7 @@ import {
   ExternalLink,
   MessageCircle,
   Phone,
-  MoreVertical,
   Trash2,
-  ArrowRight,
 } from 'lucide-react';
 
 interface KanbanCardProps {
@@ -28,6 +26,7 @@ export function KanbanCard({
   onOpenWhatsApp,
 }: KanbanCardProps) {
   const lead = card.lead;
+  const hasPhone = Boolean(lead && lead.phone && lead.phone.trim() && lead.phone.toLowerCase() !== 'null');
 
   function handleDragStart(e: React.DragEvent) {
     e.dataTransfer.setData('text/plain', card.id);
@@ -67,18 +66,26 @@ export function KanbanCard({
         <div className="space-y-2 pt-1 border-t border-slate-100 text-[11px]">
           {/* Phone & WhatsApp Action */}
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1 text-slate-600 font-medium">
-              <Phone className="w-3 h-3 text-slate-400" />
-              {lead.phone}
+            <span className="flex items-center gap-1">
+              <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+              {hasPhone ? (
+                <span className="text-slate-600 font-medium">{lead.phone}</span>
+              ) : (
+                <span className="text-slate-400 italic">Telefone não encontrado</span>
+              )}
             </span>
-            <button
-              onClick={() => onOpenWhatsApp(lead)}
-              title="Conversar no WhatsApp"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-semibold text-[10px] transition-colors"
-            >
-              <MessageCircle className="w-3 h-3" />
-              WhatsApp
-            </button>
+
+            {/* Botão de WhatsApp exibido SOMENTE se o telefone existir */}
+            {hasPhone ? (
+              <button
+                onClick={() => onOpenWhatsApp(lead)}
+                title="Conversar no WhatsApp"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-semibold text-[10px] transition-colors"
+              >
+                <MessageCircle className="w-3 h-3" />
+                WhatsApp
+              </button>
+            ) : null}
           </div>
 
           {/* Website & Niche badges */}
