@@ -25,20 +25,28 @@ describe('WhatsApp Template Interpolator & URL Generator', () => {
     expect(result).toBe('Olá Maria! Vi sua empresa de Estética em sua região.');
   });
 
-  it('generates valid WhatsApp click-to-chat URL with proper encoding', () => {
+  it('generates direct WhatsApp Web URL with proper encoding by default', () => {
     const phone = '11987654321';
     const message = 'Olá João! Tudo bem? 🚀';
 
-    const url = generateWhatsAppUrl(phone, message);
-    expect(url).toContain('https://wa.me/5511987654321?text=');
+    const url = generateWhatsAppUrl(phone, message); // default 'web'
+    expect(url).toContain('https://web.whatsapp.com/send?phone=5511987654321&text=');
     expect(url).toContain(encodeURIComponent(message));
   });
 
-  it('handles phone already having 55 prefix cleanly', () => {
-    const phone = '5511987654321';
+  it('generates direct WhatsApp Desktop App URL when platform is "app"', () => {
+    const phone = '11987654321';
+    const message = 'Olá pelo app!';
+
+    const url = generateWhatsAppUrl(phone, message, 'app');
+    expect(url).toBe(`whatsapp://send?phone=5511987654321&text=${encodeURIComponent(message)}`);
+  });
+
+  it('generates wa.me URL when platform is "wame"', () => {
+    const phone = '11987654321';
     const message = 'Teste';
 
-    const url = generateWhatsAppUrl(phone, message);
+    const url = generateWhatsAppUrl(phone, message, 'wame');
     expect(url).toBe('https://wa.me/5511987654321?text=Teste');
   });
 });

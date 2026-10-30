@@ -88,6 +88,26 @@ export async function initDatabase(): Promise<void> {
     );
   `);
 
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS scheduled_messages (
+      id TEXT PRIMARY KEY,
+      lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      scheduled_for TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pendente',
+      platform TEXT NOT NULL DEFAULT 'web',
+      created_at TEXT NOT NULL
+    );
+  `);
+
   // Default Board and Columns seed
   const existingBoards = await db.select().from(schema.boards).where(eq(schema.boards.title, 'Prospecção Geral'));
   let defaultBoardId = 'board-default';
@@ -143,5 +163,16 @@ export async function initDatabase(): Promise<void> {
     for (const tmpl of defaultTemplates) {
       await db.insert(schema.messageTemplates).values(tmpl);
     }
+  }
+
+  // Default Settings seed
+  const existingPlatformSetting = await db.select().from(schema.settings).where(eq(schema.settings.key, 'whatsapp_platform'));
+  if (existingPlatformSetting.length === 0) {
+    const now = new Date().toISOString();
+    await db.insert(schema.settings).values({
+      key: 'whatsapp_platform',
+      value: 'web',
+      updated_at: now,
+    });
   }
 }

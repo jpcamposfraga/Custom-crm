@@ -49,3 +49,19 @@ export const messageTemplates = sqliteTable('message_templates', {
   content: text('content').notNull(),
   created_at: text('created_at').notNull(),
 });
+
+export const settings = sqliteTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updated_at: text('updated_at').notNull(),
+});
+
+export const scheduledMessages = sqliteTable('scheduled_messages', {
+  id: text('id').primaryKey(),
+  lead_id: text('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+  message: text('message').notNull(),
+  scheduled_for: text('scheduled_for').notNull(),
+  status: text('status').$type<'pendente' | 'enviado' | 'cancelado'>().notNull().default('pendente'),
+  platform: text('platform').notNull().default('web'),
+  created_at: text('created_at').notNull(),
+});

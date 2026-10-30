@@ -1,3 +1,5 @@
+export type WhatsAppPlatform = 'web' | 'app' | 'wame';
+
 export function interpolateTemplate(
   template: string,
   vars: Record<string, string | null | undefined>
@@ -21,7 +23,11 @@ export function interpolateTemplate(
   return result;
 }
 
-export function generateWhatsAppUrl(phone: string, text: string): string {
+export function generateWhatsAppUrl(
+  phone: string,
+  text: string,
+  platform: WhatsAppPlatform = 'web'
+): string {
   let digits = phone.replace(/\D/g, '');
 
   if (digits.length === 10 || digits.length === 11) {
@@ -29,5 +35,15 @@ export function generateWhatsAppUrl(phone: string, text: string): string {
   }
 
   const encodedText = encodeURIComponent(text);
-  return `https://wa.me/${digits}?text=${encodedText}`;
+
+  if (platform === 'app') {
+    return `whatsapp://send?phone=${digits}&text=${encodedText}`;
+  }
+
+  if (platform === 'wame') {
+    return `https://wa.me/${digits}?text=${encodedText}`;
+  }
+
+  // Direct WhatsApp Web (default for desktop: skips intermediate wa.me page and populates input box)
+  return `https://web.whatsapp.com/send?phone=${digits}&text=${encodedText}`;
 }
