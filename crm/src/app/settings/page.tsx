@@ -8,39 +8,94 @@ import {
   Check,
   Save,
   MessageCircle,
-  Database,
   ShieldCheck,
+  Zap,
+  QrCode,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  LogOut,
+  Power,
 } from 'lucide-react';
 import type { WhatsAppPlatform } from '@/lib/template-interpolator';
 
 export default function SettingsPage() {
   const [platform, setPlatform] = useState<WhatsAppPlatform>('web');
+  const [autoSendEnabled, setAutoSendEnabled] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'waiting_qr' | 'connected'>('disconnected');
+  const [qrCode, setQrCode] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [savingPlatform, setSavingPlatform] = useState(false);
+  const [savedPlatformSuccess, setSavedPlatformSuccess] = useState(false);
+  const [savingAutoSend, setSavingAutoSend] = useState(false);
+
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   useEffect(() => {
-    fetchSettings();
+    fetchInitialData();
   }, []);
 
-  async function fetchSettings() {
+  // Poll for QR Code scan / connection status when waiting for QR
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (connectionStatus === 'waiting_qr') {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch('/api/whatsapp/status');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'connected') {
+              setConnectionStatus('connected');
+              setQrCode(null);
+            } else if (data.status === 'waiting_qr' && data.qrCode) {
+              setQrCode(data.qrCode);
+            }
+          }
+        } catch (e) {}
+      }, 3000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [connectionStatus]);
+
+  async function fetchInitialData() {
     try {
-      const res = await fetch('/api/settings');
-      if (res.ok) {
-        const data = await res.json();
+      // 1. Fetch general settings
+      const resSettings = await fetch('/api/settings');
+      if (resSettings.ok) {
+        const data = await resSettings.json();
         if (data.settings?.whatsapp_platform) {
           setPlatform(data.settings.whatsapp_platform as WhatsAppPlatform);
         }
+        if (data.settings?.auto_send_whatsapp) {
+          setAutoSendEnabled(data.settings.auto_send_whatsapp === 'true');
+        }
+      }
+
+      // 2. Fetch WhatsApp session status
+      const resStatus = await fetch('/api/whatsapp/status');
+      if (resStatus.ok) {
+        const statusData = await resStatus.json();
+        setConnectionStatus(statusData.status || 'disconnected');
+        if (statusData.qrCode) {
+          setQrCode(statusData.qrCode);
+        }
+        if (statusData.autoSendEnabled !== undefined) {
+          setAutoSendEnabled(statusData.autoSendEnabled);
+        }
       }
     } catch (err) {
-      console.error('Error fetching settings:', err);
+      console.error('Error fetching settings/status:', err);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleSave() {
-    setSaving(true);
+  async function handleSavePlatform() {
+    setSavingPlatform(true);
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -49,13 +104,70 @@ export default function SettingsPage() {
       });
 
       if (res.ok) {
-        setSavedSuccess(true);
-        setTimeout(() => setSavedSuccess(false), 2500);
+        setSavedPlatformSuccess(true);
+        setTimeout(() => setSavedPlatformSuccess(false), 2500);
       }
     } catch (err) {
-      console.error('Error saving settings:', err);
+      console.error('Error saving platform:', err);
     } finally {
-      setSaving(false);
+      setSavingPlatform(false);
+    }
+  }
+
+  async function handleToggleAutoSend(nextState: boolean) {
+    setSavingAutoSend(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'auto_send_whatsapp', value: String(nextState) }),
+      });
+
+      if (res.ok) {
+        setAutoSendEnabled(nextState);
+      }
+    } catch (err) {
+      console.error('Error saving auto_send setting:', err);
+    } finally {
+      setSavingAutoSend(false);
+    }
+  }
+
+  async function handleConnectWhatsApp() {
+    setConnecting(true);
+    try {
+      const res = await fetch('/api/whatsapp/connect', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setConnectionStatus(data.status);
+        if (data.qrCode) {
+          setQrCode(data.qrCode);
+        }
+      }
+    } catch (err) {
+      console.error('Error connecting WhatsApp:', err);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleDisconnectWhatsApp() {
+    if (!window.confirm('Tem certeza que deseja desconectar a sessão do WhatsApp do CRM?')) {
+      return;
+    }
+
+    setDisconnecting(true);
+    try {
+      const res = await fetch('/api/whatsapp/disconnect', { method: 'POST' });
+      if (res.ok) {
+        setConnectionStatus('disconnected');
+        setQrCode(null);
+        setAutoSendEnabled(false);
+      }
+    } catch (err) {
+      console.error('Error disconnecting WhatsApp:', err);
+    } finally {
+      setDisconnecting(false);
     }
   }
 
@@ -78,15 +190,176 @@ export default function SettingsPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Card: WhatsApp Integration Preference */}
+          {/* Card: Headless Auto-Send & QR Code Integration */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2 text-base font-bold text-slate-900">
+                  <Zap className="w-5 h-5 text-amber-500" />
+                  <h2>Envio Automático do WhatsApp (Headless)</h2>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Permite que mensagens agendadas e disparos no modal sejam enviados 100% sozinhos sem abrir janelas e sem precisar apertar Enter.
+                </p>
+              </div>
+
+              {/* Status Badge */}
+              <div className="shrink-0">
+                {connectionStatus === 'connected' && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Conectado ao WhatsApp
+                  </span>
+                )}
+                {connectionStatus === 'waiting_qr' && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                    <QrCode className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                    Aguardando Leitura do QR Code
+                  </span>
+                )}
+                {connectionStatus === 'disconnected' && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    <Power className="w-3.5 h-3.5 text-slate-400" />
+                    Desconectado
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Toggle Switch */}
+            <div className="flex items-start justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+              <div className="space-y-1">
+                <label htmlFor="auto-send-toggle" className="text-sm font-bold text-slate-900 cursor-pointer">
+                  Habilitar envio 100% automático (sem confirmação manual)
+                </label>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Por padrão fica desativado. Quando ligado e conectado via QR Code, as mensagens agendadas vencidas e os envios marcados no modal serão enviados automaticamente pelo robô do Playwright em segundo plano.
+                </p>
+              </div>
+
+              <div className="shrink-0 pt-0.5">
+                <button
+                  type="button"
+                  id="auto-send-toggle"
+                  role="switch"
+                  aria-checked={autoSendEnabled}
+                  disabled={savingAutoSend}
+                  onClick={() => handleToggleAutoSend(!autoSendEnabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    autoSendEnabled ? 'bg-emerald-600' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      autoSendEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Connection Area */}
+            {connectionStatus === 'disconnected' && (
+              <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-blue-50/50 border border-blue-200 rounded-xl gap-4">
+                <div className="text-xs text-blue-900 space-y-1">
+                  <p className="font-semibold">Nenhuma conta do WhatsApp conectada</p>
+                  <p className="text-blue-700">
+                    Clique em Conectar para gerar o QR Code e parear seu WhatsApp uma única vez neste computador.
+                  </p>
+                </div>
+                <button
+                  onClick={handleConnectWhatsApp}
+                  disabled={connecting}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-sm transition-all whitespace-nowrap"
+                >
+                  {connecting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Iniciando Navegador...
+                    </>
+                  ) : (
+                    <>
+                      <QrCode className="w-4 h-4" /> Conectar WhatsApp
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {connectionStatus === 'waiting_qr' && (
+              <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center text-center space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-slate-800">Escaneie o QR Code abaixo com seu celular</h3>
+                  <p className="text-xs text-slate-500">
+                    1. Abra o WhatsApp no celular &gt; <strong>Aparelhos conectados</strong> &gt; <strong>Conectar um aparelho</strong>.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-md">
+                  {qrCode ? (
+                    <img
+                      src={qrCode}
+                      alt="WhatsApp QR Code"
+                      className="w-60 h-60 object-contain rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-60 h-60 flex flex-col items-center justify-center text-slate-400 gap-2">
+                      <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-xs">Carregando QR Code do WhatsApp...</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleConnectWhatsApp}
+                    disabled={connecting}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900 bg-white border border-slate-300 rounded-lg shadow-sm"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${connecting ? 'animate-spin' : ''}`} /> Recarregar QR Code
+                  </button>
+                  <button
+                    onClick={handleDisconnectWhatsApp}
+                    disabled={disconnecting}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-rose-600 hover:text-rose-700 bg-white border border-rose-200 rounded-lg shadow-sm"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {connectionStatus === 'connected' && (
+              <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl gap-4">
+                <div className="text-xs text-emerald-950 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Sessão autenticada e pronta para disparo automático
+                  </p>
+                  <p className="text-emerald-700">
+                    O robô do Playwright está conectado ao seu WhatsApp neste computador. As mensagens agendadas serão enviadas na data e hora exatas.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleDisconnectWhatsApp}
+                  disabled={disconnecting}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-700 hover:text-rose-800 bg-white border border-rose-300 hover:bg-rose-50 rounded-lg shadow-sm transition-all whitespace-nowrap"
+                >
+                  <LogOut className="w-4 h-4" /> Desconectar WhatsApp
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Card: WhatsApp Fallback Link Preference */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
             <div>
               <div className="flex items-center gap-2 text-base font-bold text-slate-900">
                 <MessageCircle className="w-5 h-5 text-emerald-600" />
-                <h2>Método de Envio do WhatsApp</h2>
+                <h2>Método Padrão de Envio (Fallback / Manual)</h2>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Escolha como você deseja que as mensagens sejam abertas ao clicar no botão do WhatsApp nos leads. Ambos os métodos pulam a tela intermediária do wa.me e anexam a mensagem diretamente no campo de texto.
+                Escolha como você deseja que as mensagens sejam abertas quando o envio automático estiver desativado ou ao clicar no botão manual nos leads.
               </p>
             </div>
 
@@ -148,11 +421,11 @@ export default function SettingsPage() {
               </span>
 
               <button
-                onClick={handleSave}
-                disabled={saving}
+                onClick={handleSavePlatform}
+                disabled={savingPlatform}
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
               >
-                {savedSuccess ? (
+                {savedPlatformSuccess ? (
                   <>
                     <Check className="w-4 h-4 text-emerald-300" /> Salvo com Sucesso!
                   </>
@@ -169,10 +442,10 @@ export default function SettingsPage() {
           <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 space-y-3 text-xs text-slate-600">
             <h3 className="font-bold text-slate-800 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              Arquitetura & Privacidade Local
+              Arquitetura &amp; Privacidade Local
             </h3>
             <p>
-              Este CRM foi arquitetado para rodar de forma 100% autônoma e local no seu computador. Todas as informações de leads, quadros Kanban e agendamentos ficam salvas no arquivo <code>crm.db</code> (SQLite via LibSQL), sem envio de dados para servidores externos ou custos de APIs pagas.
+              Este CRM foi arquitetado para rodar de forma 100% autônoma e local no seu computador. Todas as informações de leads, quadros Kanban e agendamentos ficam salvas no arquivo <code>crm.db</code> (SQLite via LibSQL), e a sessão do WhatsApp é guardada exclusivamente na sua máquina (<code>.whatsapp-session</code>), sem servidores intermediários ou envio de dados a terceiros.
             </p>
           </div>
         </div>
