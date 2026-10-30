@@ -59,28 +59,28 @@
   - `sendHeadlessMessage(phone: string, text: string): Promise<{ success: boolean; error?: string }>`
   - `isAutoSendEligible(): Promise<boolean>`
 
-- [ ] **Step 1: Atualizar `.gitignore` e dependências**
+- [x] **Step 1: Atualizar `.gitignore` e dependências**
   - Adicionar `.whatsapp-session` ao `.gitignore`.
   - Garantir `playwright` referenciado em `crm/package.json`.
 
-- [ ] **Step 2: Escrever testes unitários em `crm/tests/whatsapp-headless.test.ts`**
+- [x] **Step 2: Escrever testes unitários em `crm/tests/whatsapp-headless.test.ts`**
   - Mockar o browser do Playwright para validar a lógica de inicialização, detecção de QR Code e timeout de seletor.
 
-- [ ] **Step 3: Executar testes para verificar falha inicial**
+- [x] **Step 3: Executar testes para verificar falha inicial**
   - Run: `npm --workspace=crm test`
 
-- [ ] **Step 4: Implementar `crm/src/lib/whatsapp-headless.ts`**
+- [x] **Step 4: Implementar `crm/src/lib/whatsapp-headless.ts`**
   - Inicialização com `chromium.launchPersistentContext`.
   - Extração de QR code via seletor `canvas` e conversão em data URL base64.
   - Navegação para `web.whatsapp.com/send?phone=...&text=...`.
   - Espera pelo botão de envio e execução do clique/Enter.
   - Fechamento da aba e retorno de sucesso.
 
-- [ ] **Step 5: Executar testes para validar implementação**
+- [x] **Step 5: Executar testes para validar implementação**
   - Run: `npm --workspace=crm test`
   - Expected: PASS
 
-- [ ] **Step 6: Commit atômico**
+- [x] **Step 6: Commit atômico**
   - `git commit -m "feat(crm): implement Playwright headless WhatsApp session manager and message dispatcher"`
 
 ---
@@ -100,15 +100,15 @@
   - `POST /api/whatsapp/disconnect`: `{ success: true }`
   - `POST /api/whatsapp/send`: `{ success: boolean, error?: string }` (Recebe `{ phone, message, lead_id? }`)
 
-- [ ] **Step 1: Criar endpoints da API `/api/whatsapp/*`**
+- [x] **Step 1: Criar endpoints da API `/api/whatsapp/*`**
   - Integrar com as funções do `whatsapp-headless.ts`.
   - Garantir atualização do lead para `em_contato` quando o envio imediato via API for bem-sucedido.
 
-- [ ] **Step 2: Executar testes e verificar compilação**
+- [x] **Step 2: Executar testes e verificar compilação**
   - Run: `npm --workspace=crm test`
   - Expected: PASS
 
-- [ ] **Step 3: Commit atômico**
+- [x] **Step 3: Commit atômico**
   - `git commit -m "feat(crm): add WhatsApp connection and headless send API endpoints"`
 
 ---
@@ -127,17 +127,17 @@
   - Painel com o QR Code dinâmico quando a conexão estiver sendo estabelecida.
   - Botão "Desconectar WhatsApp" com confirmação.
 
-- [ ] **Step 1: Implementar o componente de QR Code e controles em `SettingsPage`**
+- [x] **Step 1: Implementar o componente de QR Code e controles em `SettingsPage`**
   - Exibir estado de conexão atual.
   - Botão "Conectar WhatsApp" que invoca a rota de conexão e exibe o QR Code.
   - Polling suave para detectar quando o usuário leu o QR Code e o status virou `conectado`.
   - Switch para habilitar/desabilitar `auto_send_whatsapp`.
 
-- [ ] **Step 2: Testar build da página de configurações**
+- [x] **Step 2: Testar build da página de configurações**
   - Run: `npm run crm:build`
   - Expected: Sucesso na compilação.
 
-- [ ] **Step 3: Commit atômico**
+- [x] **Step 3: Commit atômico**
   - `git commit -m "feat(crm): add WhatsApp QR code connection and auto-send toggle in settings page"`
 
 ---
@@ -155,18 +155,18 @@
   - Se elegível: dispara via `sendHeadlessMessage(phone, item.message)`.
   - Se não elegível: mantém o comportamento nativo via `activeUrlLauncher(url)`.
 
-- [ ] **Step 1: Atualizar testes do worker em `crm/tests/scheduler-worker.test.ts`**
+- [x] **Step 1: Atualizar testes do worker em `crm/tests/scheduler-worker.test.ts`**
   - Adicionar teste para quando o envio headless estiver habilitado.
   - Adicionar teste garantindo fallback para o launcher de SO quando o envio headless estiver desabilitado.
 
-- [ ] **Step 2: Modificar `crm/src/lib/scheduler-worker.ts`**
+- [x] **Step 2: Modificar `crm/src/lib/scheduler-worker.ts`**
   - Integrar a checagem de elegibilidade headless na fila sequencial.
 
-- [ ] **Step 3: Executar testes do worker**
+- [x] **Step 3: Executar testes do worker**
   - Run: `npm --workspace=crm test`
   - Expected: PASS
 
-- [ ] **Step 4: Commit atômico**
+- [x] **Step 4: Commit atômico**
   - `git commit -m "feat(crm): integrate headless dispatch into scheduler worker with graceful OS fallback"`
 
 ---
@@ -183,16 +183,16 @@
   - Disparo direto via API headless com estado de carregamento e confirmação visual.
   - Preservação do botão tradicional caso o usuário prefira abrir a janela.
 
-- [ ] **Step 1: Adicionar toggle e lógica de envio headless no modal**
+- [x] **Step 1: Adicionar toggle e lógica de envio headless no modal**
   - Consultar se a conta está conectada ao abrir o modal.
   - Se conectada, exibir a opção de envio automático em segundo plano.
   - Tratar loading e erros de envio.
 
-- [ ] **Step 2: Executar testes de componentes e build**
+- [x] **Step 2: Executar testes de componentes e build**
   - Run: `npm run crm:build`
   - Expected: PASS
 
-- [ ] **Step 3: Commit atômico**
+- [x] **Step 3: Commit atômico**
   - `git commit -m "feat(crm): add optional headless auto-send toggle to WhatsApp preview modal"`
 
 ---
@@ -202,16 +202,17 @@
 **Files:**
 - Create: `scripts/test-whatsapp-headless-flow.ts`
 
-- [ ] **Step 1: Criar script de validação de fluxo headless e fallbacks**
+- [x] **Step 1: Criar script de validação de fluxo headless e fallbacks**
   - Testa validação de configurações.
   - Testa comportamento do worker quando habilitado vs desabilitado.
   - Testa endpoints de API.
 
-- [ ] **Step 2: Executar bateria completa de testes**
+- [x] **Step 2: Executar bateria completa de testes**
   - Run: `npm test`
   - Run: `npm run test:e2e`
   - Run: `npm run test:scheduler`
+  - Run: `npm run test:headless`
   - Run: `npm run crm:build`
 
-- [ ] **Step 3: Commit atômico final**
+- [x] **Step 3: Commit atômico final**
   - `git commit -m "test: add headless flow tests and verify full CRM test suite"`
