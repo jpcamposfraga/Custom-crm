@@ -11,7 +11,11 @@ export function normalizePhone(rawPhone: string): string {
 }
 
 export function parseCsv(csvContent: string): ParsedLead[] {
-  const cleanContent = csvContent.replace(/^\uFEFF/, '').trim();
+  let cleanContent = csvContent.replace(/^\uFEFF/, '').trim();
+  if (!cleanContent) return [];
+
+  // Strip Excel delimiter directive if present (e.g. sep=; or sep=,)
+  cleanContent = cleanContent.replace(/^sep=[;,]\r?\n/i, '').trim();
   if (!cleanContent) return [];
 
   const parsed = Papa.parse<Record<string, any>>(cleanContent, {
