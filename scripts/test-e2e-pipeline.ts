@@ -39,7 +39,7 @@ async function runE2EPipeline() {
       nicho: 'Dentista',
       hasWebsite: true,
       website: 'https://odontosorriso.com.br',
-      location: 'Campinas, SP',
+      location: 'Av. Paulista, 1000\nBela Vista\nCampinas, SP', // Multiline test
       rating: 4.8,
       reviewsCount: 42,
       googleMapsUrl: 'https://maps.google.com/?cid=123',
