@@ -66,6 +66,10 @@ export async function POST(request: Request) {
       created_at: now,
     });
 
+    // Ensure background scheduler worker is running
+    const { startSchedulerWorker } = await import('@/lib/scheduler-worker');
+    startSchedulerWorker();
+
     return NextResponse.json({
       success: true,
       scheduledMessage: {

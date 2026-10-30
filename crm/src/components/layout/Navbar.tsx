@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutGrid, Table, UploadCloud, Calendar, Settings } from 'lucide-react';
@@ -10,6 +10,19 @@ import { CsvImportModal } from '../import/CsvImportModal';
 export function Navbar() {
   const pathname = usePathname();
   const [isImportOpen, setIsImportOpen] = useState(false);
+
+  // Background scheduler sync heartbeat (every 20s while CRM is open)
+  useEffect(() => {
+    const triggerSync = () => {
+      fetch('/api/scheduled-messages/trigger', { method: 'POST' }).catch(() => {});
+    };
+
+    // Initial check on mount
+    triggerSync();
+
+    const interval = setInterval(triggerSync, 20000);
+    return () => clearInterval(interval);
+  }, []);
 
   const navItems = [
     { label: 'Tabela de Leads', href: '/leads', icon: Table },
