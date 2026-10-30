@@ -41,3 +41,7 @@ Thumbs.db
 # Scraper output CSVs
 scraper/output/
 temp.txt
+
+# WhatsApp Session Auth Data
+.whatsapp-session/
+crm/.whatsapp-session/
