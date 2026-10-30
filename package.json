@@ -15,7 +15,8 @@
     "crm:start": "npm run start --workspace=crm",
     "test": "npm test --workspaces --if-present",
     "test:e2e": "tsx scripts/test-e2e-pipeline.ts",
-    "test:scheduler": "tsx scripts/test-automated-scheduler.ts"
+    "test:scheduler": "tsx scripts/test-automated-scheduler.ts",
+    "test:headless": "tsx scripts/test-whatsapp-headless-flow.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.2",
