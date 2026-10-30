@@ -27,6 +27,12 @@ export const db = new Proxy({} as LibSQLDatabase<typeof schema>, {
 export async function initDatabase(): Promise<void> {
   const { client, db } = getDatabase();
 
+  // Configure SQLite WAL mode and busy timeout for concurrent safety
+  try {
+    await client.execute('PRAGMA journal_mode = WAL;');
+    await client.execute('PRAGMA busy_timeout = 5000;');
+  } catch (e) {}
+
   // Create tables
   await client.execute(`
     CREATE TABLE IF NOT EXISTS leads (

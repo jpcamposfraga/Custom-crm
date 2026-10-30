@@ -163,13 +163,18 @@ async function runE2EPipeline() {
   });
 
   const waUrl = generateWhatsAppUrl(existingLead.normalized_phone, messageText);
+  const waAppUrl = generateWhatsAppUrl(existingLead.normalized_phone, messageText, 'app');
   console.log(`   Interpolated message: "${messageText.slice(0, 70)}..."`);
-  console.log(`   Generated WhatsApp URL: ${waUrl.slice(0, 60)}...`);
+  console.log(`   Generated WhatsApp Web URL: ${waUrl.slice(0, 60)}...`);
+  console.log(`   Generated WhatsApp App URL: ${waAppUrl.slice(0, 60)}...`);
 
-  if (!waUrl.startsWith('https://wa.me/5519987654321?text=')) {
-    throw new Error('❌ WhatsApp URL generation did not produce expected wa.me prefix');
+  if (!waUrl.startsWith('https://web.whatsapp.com/send?phone=5519987654321&text=')) {
+    throw new Error('❌ WhatsApp Web URL generation did not produce expected direct web.whatsapp.com prefix');
   }
-  console.log('   ✅ WhatsApp Click-to-Chat URL verified.');
+  if (!waAppUrl.startsWith('whatsapp://send?phone=5519987654321&text=')) {
+    throw new Error('❌ WhatsApp App URL generation did not produce expected direct whatsapp:// prefix');
+  }
+  console.log('   ✅ Direct WhatsApp Web & App URLs verified (skips wa.me and populates input box).');
 
   console.log('\n🎉 ALL 8 PIPELINE VERIFICATION STEPS PASSED SUCCESSFULLY! 🎉\n');
 
