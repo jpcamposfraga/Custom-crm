@@ -2,24 +2,50 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ScrapedLead } from './types.js';
 
-function escapeCsvField(value: unknown): string {
-  if (value === undefined || value === null) {
-    return '';
-  }
-  const str = String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
+export interface CsvExportOptions {
+  delimiter?: ';' | ',';
 }
 
 /**
- * Exports scraped leads to a CSV file encoded in UTF-8 (with BOM for Excel compatibility).
+ * Sanitizes text by removing line breaks (\r, \n), tabs, and duplicate spaces,
+ * preventing multiline cells inside Excel.
+ */
+function sanitizeText(value: unknown): string {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  return String(value)
+    .replace(/[\r\n\t]+/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*-\s*-\s*/g, ' - ')
+    .trim();
+}
+
+/**
+ * Escapes a single CSV field value according to RFC 4180 rules.
+ */
+function escapeCsvField(value: unknown, delimiter = ';'): string {
+  const sanitized = sanitizeText(value);
+  if (
+    sanitized.includes(delimiter) ||
+    sanitized.includes('"') ||
+    sanitized.includes(',')
+  ) {
+    return `"${sanitized.replace(/"/g, '""')}"`;
+  }
+  return sanitized;
+}
+
+/**
+ * Exports scraped leads to a CSV file encoded in UTF-8 (with BOM for Excel compatibility)
+ * using semicolon (;) as default delimiter and CRLF (\r\n) line endings.
  */
 export async function exportLeadsToCsv(
   leads: ScrapedLead[],
-  outputPath?: string
+  outputPath?: string,
+  options: CsvExportOptions = {}
 ): Promise<string> {
+  const delimiter = options.delimiter || ';';
   let finalPath = outputPath;
 
   if (!finalPath) {
@@ -48,19 +74,23 @@ export async function exportLeadsToCsv(
   ];
 
   const rows = leads.map((lead) => [
-    escapeCsvField(lead.name),
-    escapeCsvField(lead.phone),
-    escapeCsvField(lead.normalizedPhone),
-    escapeCsvField(lead.nicho),
-    escapeCsvField(lead.hasWebsite),
-    escapeCsvField(lead.website),
-    escapeCsvField(lead.location),
-    escapeCsvField(lead.rating),
-    escapeCsvField(lead.reviewsCount),
-    escapeCsvField(lead.googleMapsUrl),
+    escapeCsvField(lead.name, delimiter),
+    escapeCsvField(lead.phone, delimiter),
+    escapeCsvField(lead.normalizedPhone, delimiter),
+    escapeCsvField(lead.nicho, delimiter),
+    escapeCsvField(lead.hasWebsite, delimiter),
+    escapeCsvField(lead.website, delimiter),
+    escapeCsvField(lead.location, delimiter),
+    escapeCsvField(lead.rating, delimiter),
+    escapeCsvField(lead.reviewsCount, delimiter),
+    escapeCsvField(lead.googleMapsUrl, delimiter),
   ]);
 
-  const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n') + '\n';
+  // UTF-8 BOM (\uFEFF) + headers + CRLF rows
+  const csvContent =
+    '\uFEFF' +
+    [headers.join(delimiter), ...rows.map((r) => r.join(delimiter))].join('\r\n') +
+    '\r\n';
 
   await fs.promises.writeFile(finalPath, csvContent, 'utf-8');
 

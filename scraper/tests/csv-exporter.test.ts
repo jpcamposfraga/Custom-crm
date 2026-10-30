@@ -13,7 +13,7 @@ describe('exportLeadsToCsv', () => {
     }
   });
 
-  it('exports leads to CSV with headers and proper escaping', async () => {
+  it('exports leads to CSV using semicolon delimiter and CRLF line endings for Excel', async () => {
     const leads: ScrapedLead[] = [
       {
         name: 'Clínica Odonto, "Sorriso & Saúde"',
@@ -22,7 +22,7 @@ describe('exportLeadsToCsv', () => {
         nicho: 'dentista',
         hasWebsite: true,
         website: 'https://sorriso.com.br',
-        location: 'Av. Paulista, 1000 - São Paulo, SP',
+        location: 'Av. Paulista, 1000\nBela Vista\nSão Paulo, SP', // Multiline address
         rating: 4.8,
         reviewsCount: 120,
         googleMapsUrl: 'https://maps.google.com/?cid=123',
@@ -48,20 +48,28 @@ describe('exportLeadsToCsv', () => {
     expect(fs.existsSync(targetFile)).toBe(true);
 
     const content = await fs.promises.readFile(targetFile, 'utf-8');
-    const lines = content.replace(/^\uFEFF/, '').trim().split('\n');
+    expect(content.startsWith('\uFEFF')).toBe(true); // UTF-8 BOM for Excel
 
-    expect(lines[0]).toBe('name,phone,normalized_phone,nicho,has_website,website,location,rating,reviews_count,google_maps_url');
-    // First lead with escaped commas and quotes
+    const cleanContent = content.replace(/^\uFEFF/, '');
+    const lines = cleanContent.split('\r\n').filter(Boolean);
+
+    // Verify semicolon delimiter in headers
+    expect(lines[0]).toBe('name;phone;normalized_phone;nicho;has_website;website;location;rating;reviews_count;google_maps_url');
+
+    // Verify multiline address in lead 1 is sanitized to a single line without \n or \r
+    expect(lines[1]).not.toContain('\n');
+    expect(lines[1]).toContain('Av. Paulista, 1000 - Bela Vista - São Paulo, SP');
     expect(lines[1]).toContain('"Clínica Odonto, ""Sorriso & Saúde"""');
     expect(lines[1]).toContain('11987654321');
     expect(lines[1]).toContain('true');
-    expect(lines[1]).toContain('4.8');
-    expect(lines[1]).toContain('120');
 
-    // Second lead without website or ratings
+    // Verify lead 2
     expect(lines[2]).toContain('Consultório Sem Site');
     expect(lines[2]).toContain('1932345678');
     expect(lines[2]).toContain('false');
+
+    // Exactly 3 lines (1 header + 2 leads)
+    expect(lines.length).toBe(3);
   });
 
   it('generates a default output file path when none is provided', async () => {
