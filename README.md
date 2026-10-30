@@ -1,179 +1,114 @@
-# Ecossistema de Prospecção B2B: Scraper Google Maps & CRM Web
+# Custom CRM & Google Maps Scraper Monorepo
 
-Sistema integrado, local e enxuto desenvolvido em TypeScript para coletar leads qualificados do Google Maps e gerenciá-los em um CRM visual com múltiplos Kanbans, detecção inteligente de telefones duplicados e disparo de mensagens via WhatsApp Click-to-Chat com templates dinâmicos.
+Sistema integrado de prospecção comercial B2B para negócios locais, composto por um **Scraper autônomo do Google Maps** e um **CRM Web fullstack** com múltiplos Kanbans, deduplicação inteligente por telefone e disparador rápido via WhatsApp Click-to-Chat.
+
+---
+
+## 🏗️ Padrões de Projeto e Decisões de Arquitetura
+
+O projeto foi construído seguindo os princípios de **Clean Code**, **TDD (Test-Driven Development)** e o estilo **Ponytail** (código enxuto, direto e sem abstrações desnecessárias):
+
+### 1. Padrão Monorepo Desacoplado (NPM Workspaces)
+- O repositório organiza dois subsistemas independentes (`/scraper` e `/crm`), compartilhando o ecossistema TypeScript sem acoplamento de código.
+- Cada workspace possui seu próprio `package.json`, scripts e testes isolados, permitindo que o Scraper e o CRM rodem ou sejam distribuídos de forma autônoma.
+
+### 2. Arquitetura em Camadas e Desacoplamento Limpo
+- **Scraper (`/scraper`)**: Arquitetura CLI com separação clara de responsabilidades:
+  - `query-builder.ts`: Montagem e sanitização de consultas de busca.
+  - `crawler.ts`: Automação e navegação com Playwright, paginação por scroll infinito e fallbacks para variações de layout.
+  - `normalizer.ts`: Motor de sanitização de telefones brasileiros (formatação e extração de dígitos).
+  - `csv-exporter.ts`: Exportador com suporte a UTF-8 BOM e escape de caracteres RFC 4180.
+- **CRM Web (`/crm`)**: Fullstack Next.js com App Router:
+  - `src/db/`: Single Source of Truth para o banco de dados (SQLite + Drizzle ORM).
+  - `src/lib/`: Motores de regras de negócio (parser CSV, analisador de duplicados, interpolador de templates).
+  - `src/components/`: Componentes visuais atômicos divididos por domínio (`kanban`, `leads`, `import`, `whatsapp`, `search`).
+  - `src/app/api/`: Route handlers RESTful para sincronização de dados.
+
+### 3. Padrão de Persistência Zero-Config (LibSQL + Drizzle ORM)
+- Utilização do `@libsql/client` conectando em `file:crm.db` local.
+- **Vantagem**: Pure JavaScript/WASM, livre de dependências de compilação C++ (evita problemas com `node-gyp` no Windows) e zero necessidade de servidores externos como PostgreSQL ou Docker.
+- Modo WAL (Write-Ahead Logging) ativo e migração/seed automatizado (`initDatabase()`) executado na inicialização da aplicação.
+
+### 4. Padrão de Deduplicação e Ingestão Defensiva
+- **Normalização de Chave Única**: Telefones são convertidos para dígitos puros (DDD + número) antes de qualquer comparação.
+- **Análise em Duplo Nível**:
+  1. *Intra-file*: Identifica registros repetidos dentro do próprio arquivo CSV.
+  2. *Database-level*: Cruza os telefones em lote (`IN (...)`) contra o banco de dados SQLite.
+- **Pré-visualização Obrigatória**: A importação não sobrescreve cegamente; exibe métricas claras (total, novos e duplicados) antes de salvar no banco.
+
+### 5. Padrão Anti-Ban para Contato Comercial (WhatsApp Click-to-Chat)
+- Em vez de bots não-oficiais (ex: Baileys/Evolution API) que violam os termos do WhatsApp e causam banimento frequente do número da empresa, o sistema utiliza o protocolo seguro `https://wa.me/55...`.
+- O CRM fornece um modal com templates dinâmicos (`{nome}`, `{nicho}`, `{cidade}`), live preview e abre a conversa preenchida no WhatsApp Web/Desktop com 1 clique.
 
 ---
 
 ## 🛠️ Tecnologias Utilizadas
 
-- **Scraper CLI (`/scraper`)**: Node.js, TypeScript, Playwright (Chromium headless), Commander, Prompts, RFC-4180 CSV Exporter.
-- **CRM Web (`/crm`)**: Next.js 15 (App Router, React 19), Tailwind CSS, Lucide Icons, SQLite local via LibSQL (`@libsql/client`), Drizzle ORM, PapaParse, Vitest.
-- **Monorepo**: NPM Workspaces gerenciando os dois projetos de forma desacoplada.
+| Subsistema | Tecnologia | Finalidade |
+|---|---|---|
+| **Runtime & Linguagem** | Node.js v24+, TypeScript 5.7+ | Execução nativa e tipagem estática ponta a ponta |
+| **Scraper** | Playwright (Chromium) | Crawler headless rápido com suporte a navegação real |
+| **Scraper CLI** | Commander & Prompts | Suporte duplo a flags de terminal e modo interativo |
+| **CRM Frontend** | Next.js 15 (App Router, React 19) | Aplicação web responsiva e performática |
+| **Estilização** | Tailwind CSS v4, Lucide Icons | Design moderno, limpo e consistente |
+| **ORM & Banco de Dados** | Drizzle ORM + @libsql/client | Banco SQLite local, tipado e zero-config |
+| **Manipulação de Dados** | PapaParse, Zod | Parsing resiliente de CSV e validação de schemas |
+| **Testes** | Vitest, TSX | Suíte de testes unitários e teste integrado de ponta a ponta |
 
 ---
 
-## 📋 Pré-requisitos
+## 🚀 Como Executar o Projeto
 
-- **Node.js** v20+ (testado e recomendado na v24+)
+### Pré-requisitos
+- **Node.js** v20 ou superior (recomendado v24+)
 - **NPM** v10+
-- Navegador para o CRM (Chrome, Edge, Firefox, Brave, etc.)
 
----
+### 1. Instalação
+Na raiz do projeto (`C:\Users\João\custom-crm`):
+```bash
+npm install
+npx playwright install chromium
+```
 
-## 🚀 Instalação Rápida
+### 2. Executando o Scraper do Google Maps
 
-1. Clone o repositório ou navegue até a pasta do projeto:
-   ```bash
-   cd custom-crm
-   ```
-
-2. Instale as dependências de todos os workspaces com um único comando:
-   ```bash
-   npm install
-   ```
-
-3. Instale os binários do Chromium necessários para o Playwright (apenas na primeira vez):
-   ```bash
-   npx playwright install chromium
-   ```
-
----
-
-## 🗺️ 1. Como Usar o Scraper do Google Maps
-
-O scraper pode ser executado de duas formas no seu terminal:
-
-### Opção A: Modo Interativo (Perguntas no Terminal)
-Basta rodar sem argumentos:
+#### Modo Interativo (Perguntas no Terminal):
 ```bash
 npm run scrape
 ```
-O assistente perguntará:
-- *Qual o nicho a ser pesquisado?* (ex: `dentistas`, `academias`, `restaurantes`)
-- *Qual a região ou cidade?* (ex: `Campinas, SP`, `Pinheiros, São Paulo`)
-- *Limite de estabelecimentos a coletar:* (padrão: `50`)
 
-### Opção B: Linha de Comando (Flags diretas)
+#### Modo com Flags Diretas:
 ```bash
-# Busca combinando nicho e região:
+# Busca por nicho e região:
 npm run scrape -- --nicho="dentistas" --regiao="Campinas, SP" --limite=30
 
-# Ou busca direta livre:
-npm run scrape -- --busca="clinicas de estética em Belo Horizonte" --limite=40
+# Busca livre:
+npm run scrape -- --busca="academias em Pinheiros São Paulo" --limite=50
 
-# Para acompanhar o navegador visualmente (modo com janela aberta):
+# Executar com navegador visível (útil para depuração visual):
 npm run scrape -- --nicho="pet shop" --regiao="Curitiba" --no-headless
 ```
+Os arquivos gerados são salvos em `scraper/output/leads-[data].csv`.
 
-### 📁 Arquivo Gerado
-Os resultados são salvos automaticamente na pasta `scraper/output/` com o nome no formato:
-`scraper/output/leads-YYYY-MM-DDTHH-mm-ss.csv`
-
-**Colunas do CSV:**
-- `name`: Nome da empresa
-- `phone`: Telefone comercial formatado
-- `normalized_phone`: Apenas dígitos para deduplicação (ex: `19987654321`)
-- `nicho`: Categoria/Nicho
-- `has_website`: `true` ou `false`
-- `website`: URL do site (se houver)
-- `location`: Endereço completo ou cidade
-- `rating`: Nota média no Google Maps (ex: `4.8`)
-- `reviews_count`: Total de avaliações
-- `google_maps_url`: Link direto da ficha no Maps
-
----
-
-## 💼 2. Como Usar o CRM Web
-
-Inicie o servidor de desenvolvimento do CRM:
+### 3. Executando o CRM Web
 ```bash
 npm run dev
-# ou
-npm run crm:dev
 ```
-Acesse no seu navegador: **`http://localhost:3000`**
+Acesse no navegador: **`http://localhost:3000`**
 
-### Funcionalidades do CRM:
-
-1. **📥 Importação Inteligente de CSV:**
-   - Clique no botão **"Importar CSV"** no cabeçalho.
-   - Selecione o arquivo `.csv` gerado pelo scraper.
-   - O sistema analisa instantaneamente o arquivo e exibe a pré-visualização:
-     - Total de registros
-     - Leads novos
-     - Leads duplicados (destaca telefones que já existem no banco ou repetidos dentro do próprio CSV)
-   - Escolha o quadro Kanban de destino e confirme a importação com 1 clique.
-
-2. **🔍 Verificador Rápido de Telefone:**
-   - No topo de qualquer página do CRM, digite qualquer número de telefone (com ou sem DDD, com ou sem traços).
-   - O verificador avisa em tempo real:
-     - Se o lead já está cadastrado, seu nome, nicho e em qual estágio/coluna ele se encontra.
-     - Se é um número novo disponível para prospecção.
-
-3. **📊 Tabela Completa de Leads:**
-   - Acesse `/leads` para visualizar todos os contatos.
-   - **Ordenação rápida:** por Data de Inclusão, Nome (A-Z) ou Nicho (A-Z).
-   - **Filtros avançados:** por Nicho, Status de Conversão e se possui Website.
-   - **Status de conversão:** botão para alternar rapidamente entre "Convertido" e "Não Convertido".
-
-4. **📌 Múltiplos Kanbans Customizáveis:**
-   - Acesse `/kanban` para ver o funil visual.
-   - Crie novos quadros (ex: *"Prospecção Odonto SP"*, *"Tarefas Internas"*).
-   - Crie e renomeie colunas/estágios personalizados.
-   - Mova os cards entre as colunas; mover um lead para a coluna marcada como **"Convertido"** atualiza automaticamente o status do lead no banco de dados.
-
-5. **💬 WhatsApp Click-to-Chat com Templates Dinâmicos:**
-   - Em qualquer card do Kanban ou linha da tabela de leads, clique no botão verde do **WhatsApp**.
-   - Escolha um dos templates cadastrados (ex: *Apresentação Comercial*, *Proposta de Website*, *Follow-up*).
-   - O sistema substitui automaticamente as variáveis `{nome}`, `{nicho}`, `{cidade}` pelos dados reais do lead.
-   - Clique em **"Abrir WhatsApp"**: a conversa abre instantaneamente no WhatsApp Web / Desktop com a mensagem preenchida, sem risco de banimento de número.
+- **Importar Leads**: Clique no botão "Importar CSV" no cabeçalho e selecione a planilha gerada pelo scraper.
+- **Verificador de Telefone**: Digite qualquer número na barra superior para verificar se o lead já está cadastrado.
+- **Gestão de Kanbans**: Acesse `/kanban` para criar novos quadros, criar colunas personalizadas e mover leads e tarefas.
+- **Disparo via WhatsApp**: Clique no ícone verde em qualquer card ou linha de lead para abrir o modal de templates dinâmicos.
 
 ---
 
-## 🧪 Executando os Testes
-
-O projeto conta com cobertura completa de testes unitários e teste integrado E2E:
+## 🧪 Testes Automatizados
 
 ```bash
-# Executa todos os testes unitários (scraper + crm):
+# Executa todos os 32 testes unitários (Scraper + CRM):
 npm test
 
-# Executa apenas os testes do scraper:
-npm --workspace=scraper test
-
-# Executa apenas os testes do CRM:
-npm --workspace=crm test
-
-# Executa o teste de ponta a ponta (E2E Pipeline):
+# Executa o teste ponta a ponta integrado (E2E Pipeline):
 npm run test:e2e
-```
-
----
-
-## 📁 Estrutura do Repositório
-
-```text
-crm-jpcamposfraga/
-├── scraper/                     # Workspace do Scraper
-│   ├── src/
-│   │   ├── cli.ts               # Interface de linha de comando
-│   │   ├── crawler.ts           # Crawler Google Maps com Playwright
-│   │   ├── csv-exporter.ts      # Gerador de CSV estruturado
-│   │   ├── normalizer.ts        # Sanitizador de telefones BR
-│   │   └── query-builder.ts     # Formatador de queries de busca
-│   └── tests/                   # Testes unitários do scraper
-│
-├── crm/                         # Workspace do CRM Web (Next.js 15)
-│   ├── src/
-│   │   ├── app/                 # Rotas e páginas (App Router)
-│   │   ├── components/          # Componentes de UI (Kanban, Leads, Import, WhatsApp)
-│   │   ├── db/                  # Schema e conexão SQLite (Drizzle ORM)
-│   │   └── lib/                 # Parser CSV, Deduplicador e Templates
-│   └── tests/                   # Testes unitários do CRM
-│
-├── scripts/
-│   └── test-e2e-pipeline.ts     # Teste ponta a ponta integrado
-├── docs/                        # Especificações de design e planos Superpowers
-├── package.json                 # Configuração do Monorepo (NPM Workspaces)
-└── README.md                    # Documentação completa do projeto
 ```
