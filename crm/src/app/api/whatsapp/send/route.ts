@@ -16,6 +16,14 @@ export async function POST(request: Request) {
       );
     }
 
+    const cleanDigits = String(phone).replace(/\D/g, '');
+    if (cleanDigits.length < 10) {
+      return NextResponse.json(
+        { error: 'Número de telefone inválido (deve conter ao menos 10 dígitos com DDD)' },
+        { status: 400 }
+      );
+    }
+
     const eligible = await isAutoSendEligible();
     if (!eligible) {
       return NextResponse.json(

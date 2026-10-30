@@ -10,6 +10,7 @@ import {
   isAutoSendEligible,
   setAutomationDriver,
   resetAutomationDriver,
+  PlaywrightWhatsAppDriver,
   type WhatsAppAutomationDriver,
 } from '../src/lib/whatsapp-headless';
 
@@ -133,5 +134,15 @@ describe('WhatsApp Headless Automation (Playwright)', () => {
     const status = await getWhatsAppSessionStatus();
     expect(status.status).toBe('disconnected');
     expect(status.qrCode).toBeNull();
+  });
+
+  it('PlaywrightWhatsAppDriver defaults to disconnected and rejects send when disconnected', async () => {
+    const realDriver = new PlaywrightWhatsAppDriver();
+    const status = await realDriver.getStatus();
+    expect(status.status).toBe('disconnected');
+
+    const sendRes = await realDriver.send('19987654321', 'Teste sem conexao');
+    expect(sendRes.success).toBe(false);
+    expect(sendRes.error).toContain('não está conectado');
   });
 });

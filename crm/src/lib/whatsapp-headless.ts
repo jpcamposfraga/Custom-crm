@@ -14,18 +14,20 @@ export interface WhatsAppAutomationDriver {
   send(phone: string, message: string): Promise<{ success: boolean; error?: string }>;
 }
 
-const baseDir = process.cwd().endsWith('crm') ? process.cwd() : path.join(process.cwd(), 'crm');
+const isCrmDir = path.basename(process.cwd()) === 'crm';
+const baseDir = isCrmDir ? process.cwd() : path.join(process.cwd(), 'crm');
 const SESSION_DIR = path.join(baseDir, '.whatsapp-session');
 
-class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
+export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
   private context: BrowserContext | null = null;
   private activePage: Page | null = null;
   private currentStatus: WhatsAppSessionStatus = 'disconnected';
   private latestQrCode: string | null = null;
   private isCheckingAuth = false;
+  private sendQueue: Promise<any> = Promise.resolve();
 
   async getStatus(): Promise<{ status: WhatsAppSessionStatus; qrCode?: string | null }> {
-    if (this.context && this.activePage) {
+    if (this.context && this.activePage && !this.activePage.isClosed()) {
       try {
         const isChatListVisible = await this.activePage.locator('div[id="pane-side"]').isVisible({ timeout: 1000 }).catch(() => false);
         if (isChatListVisible) {
@@ -43,21 +45,11 @@ class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
       } catch (e) {}
     }
 
-    // If context is not in memory but session files exist on disk, probe silently
-    if (!this.context && fs.existsSync(SESSION_DIR)) {
-      try {
-        const files = fs.readdirSync(SESSION_DIR);
-        if (files.length > 0) {
-          return { status: this.currentStatus, qrCode: this.latestQrCode };
-        }
-      } catch (e) {}
-    }
-
     return { status: this.currentStatus, qrCode: this.latestQrCode };
   }
 
   private async captureQrCode(): Promise<void> {
-    if (!this.activePage) return;
+    if (!this.activePage || this.activePage.isClosed()) return;
     try {
       const canvas = this.activePage.locator('canvas').first();
       if (await canvas.isVisible({ timeout: 2000 })) {
@@ -72,11 +64,19 @@ class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
   private startLoginWatcher(): void {
     if (this.isCheckingAuth) return;
     this.isCheckingAuth = true;
+    let ticks = 0;
+    const MAX_TICKS = 100; // ~5 minutes max
 
     const checkInterval = setInterval(async () => {
-      if (!this.activePage || this.activePage.isClosed()) {
+      ticks++;
+      if (!this.activePage || this.activePage.isClosed() || ticks >= MAX_TICKS) {
         clearInterval(checkInterval);
         this.isCheckingAuth = false;
+        if (ticks >= MAX_TICKS && this.currentStatus !== 'connected') {
+          this.currentStatus = 'disconnected';
+          this.latestQrCode = null;
+          console.log('[WhatsApp Playwright] ⏱️ Tempo limite de leitura de QR Code atingido.');
+        }
         return;
       }
 
@@ -134,8 +134,8 @@ class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
     // Wait for either logged in pane or QR code canvas
     try {
       const result = await Promise.race([
-        this.activePage.waitForSelector('div[id="pane-side"]', { timeout: 15000 }).then(() => 'logged_in'),
-        this.activePage.waitForSelector('canvas', { timeout: 15000 }).then(() => 'qr_ready'),
+        this.activePage.waitForSelector('div[id="pane-side"]', { timeout: 15000 }).then(() => 'logged_in').catch(() => null),
+        this.activePage.waitForSelector('canvas', { timeout: 15000 }).then(() => 'qr_ready').catch(() => null),
       ]);
 
       if (result === 'logged_in') {
@@ -166,7 +166,7 @@ class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
 
     try {
       if (fs.existsSync(SESSION_DIR)) {
-        fs.rmSync(SESSION_DIR, { recursive: true, force: true });
+        fs.rmSync(SESSION_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
       }
     } catch (e) {
       console.warn('[WhatsApp Playwright] Aviso ao remover diretório de sessão:', e);
@@ -174,16 +174,30 @@ class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
   }
 
   async send(phone: string, message: string): Promise<{ success: boolean; error?: string }> {
+    // Sequential mutex queue to prevent parallel tabs conflicting on the same WhatsApp session
+    return new Promise<{ success: boolean; error?: string }>((resolve) => {
+      this.sendQueue = this.sendQueue
+        .then(async () => {
+          const res = await this.executeSend(phone, message);
+          resolve(res);
+        })
+        .catch((err) => {
+          resolve({ success: false, error: err.message || 'Erro na fila de envio do WhatsApp' });
+        });
+    });
+  }
+
+  private async executeSend(phone: string, message: string): Promise<{ success: boolean; error?: string }> {
     const status = await this.getStatus();
     if (status.status !== 'connected') {
       return { success: false, error: 'WhatsApp não está conectado. Conecte pelo painel de configurações.' };
     }
 
-    if (!this.context) {
+    if (!this.context || !this.activePage || this.activePage.isClosed()) {
       await this.start();
     }
 
-    if (!this.context) {
+    if (!this.context || !this.activePage) {
       return { success: false, error: 'Não foi possível iniciar o navegador do WhatsApp.' };
     }
 
@@ -192,37 +206,43 @@ class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
       ? `55${cleanDigits}`
       : cleanDigits;
 
-    const page = await this.context.newPage();
+    // Reuse the single active page to prevent WhatsApp "Use here" multi-tab conflict
+    const page = this.activePage;
     const encodedText = encodeURIComponent(message);
     const targetUrl = `https://web.whatsapp.com/send?phone=${targetPhone}&text=${encodedText}`;
 
     try {
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
 
-      // Check for send button or invalid number popup
+      // Check for send button or invalid number popup with catch to prevent unhandled rejection
       const sendButtonSelector = 'button[data-testid="compose-btn-send"], button[aria-label="Enviar"], span[data-icon="send"]';
       const errorPopupSelector = 'div[data-testid="popup-contents"], div[data-animate-modal-popup="true"]';
 
       const detected = await Promise.race([
-        page.waitForSelector(sendButtonSelector, { timeout: 25000 }).then(() => 'send_btn'),
-        page.waitForSelector(errorPopupSelector, { timeout: 25000 }).then(() => 'invalid_number'),
+        page.waitForSelector(sendButtonSelector, { timeout: 25000 }).then(() => 'send_btn').catch(() => null),
+        page.waitForSelector(errorPopupSelector, { timeout: 25000 }).then(() => 'invalid_number').catch(() => null),
       ]);
 
       if (detected === 'invalid_number') {
-        await page.close();
         return { success: false, error: 'O número de telefone não possui conta no WhatsApp.' };
       }
 
-      // Click send button
-      const sendBtn = page.locator(sendButtonSelector).first();
-      await sendBtn.click();
+      if (!detected || detected !== 'send_btn') {
+        // Fallback: try pressing Enter on active element
+        await page.keyboard.press('Enter');
+      } else {
+        const sendBtn = page.locator(sendButtonSelector).first();
+        if (await sendBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await sendBtn.click();
+        } else {
+          await page.keyboard.press('Enter');
+        }
+      }
 
       // Small pause to allow websocket transmission
       await page.waitForTimeout(2000);
-      await page.close();
       return { success: true };
     } catch (err: any) {
-      await page.close().catch(() => {});
       return { success: false, error: err.message || 'Tempo limite excedido ao tentar enviar a mensagem.' };
     }
   }
