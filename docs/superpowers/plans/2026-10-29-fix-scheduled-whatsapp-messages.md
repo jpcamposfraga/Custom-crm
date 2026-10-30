@@ -61,24 +61,24 @@
   - Executa `exec('start "" "<whatsappUrl>"')` no Windows para cada mensagem com `status = 'pendente'` e `Date.parse(scheduled_for) <= Date.now()`.
   - Atualiza status para `'enviado'` e atualiza o lead para `'em_contato'`.
 
-- [ ] **Step 1: Escrever testes unitários em `crm/tests/scheduler-worker.test.ts`**
+- [x] **Step 1: Escrever testes unitários em `crm/tests/scheduler-worker.test.ts`**
   - Criar lead com mensagem agendada no passado/agora.
   - Chamar `checkAndTriggerDueMessages` (com mock da função de execução de SO).
   - Verificar que a mensagem foi identificada, o link correto foi montado e o status no banco mudou para `'enviado'`.
 
-- [ ] **Step 2: Executar testes para verificar que falham**
+- [x] **Step 2: Executar testes para verificar que falham**
   - Run: `npm --workspace=crm test`
 
-- [ ] **Step 3: Implementar `crm/src/lib/scheduler-worker.ts`**
+- [x] **Step 3: Implementar `crm/src/lib/scheduler-worker.ts`**
   - Implementar consulta SQL buscando mensagens pendentes.
   - Implementar comando `child_process.exec` compatível com Windows.
   - Implementar timer de loop contínuo (default a cada 10 segundos).
 
-- [ ] **Step 4: Executar testes para verificar aprovação**
+- [x] **Step 4: Executar testes para verificar aprovação**
   - Run: `npm --workspace=crm test`
   - Expected: PASS
 
-- [ ] **Step 5: Commit atômico**
+- [x] **Step 5: Commit atômico**
   - `git commit -m "feat(crm): implement background scheduler worker for automated WhatsApp message dispatch"`
 
 ---
@@ -97,17 +97,17 @@
   - Inicialização automática do worker quando o servidor do CRM inicia (`npm run dev`).
   - O componente `Navbar` faz um ping periódico a cada 20 segundos em `/api/scheduled-messages/trigger` como garantia de execução ativa caso o servidor rode em modo Serverless.
 
-- [ ] **Step 1: Criar rota `trigger` e registrar worker**
+- [x] **Step 1: Criar rota `trigger` e registrar worker**
   - Chamar `checkAndTriggerDueMessages()` e retornar quantidade disparada.
 
-- [ ] **Step 2: Conectar polling no `Navbar.tsx`**
+- [x] **Step 2: Conectar polling no `Navbar.tsx`**
   - Adicionar `useEffect` com intervalo leve que chama `/api/scheduled-messages/trigger`.
 
-- [ ] **Step 3: Executar testes de integração**
+- [x] **Step 3: Executar testes de integração**
   - Run: `npm --workspace=crm test`
   - Expected: PASS
 
-- [ ] **Step 4: Commit atômico**
+- [x] **Step 4: Commit atômico**
   - `git commit -m "feat(crm): auto-start scheduler on server boot and add trigger endpoint with client sync"`
 
 ---
@@ -123,9 +123,9 @@
   - Aguarda 4 segundos e executa a checagem.
   - Valida que o status transitou de `'pendente'` para `'enviado'` e o disparo ocorreu com sucesso.
 
-- [ ] **Step 1: Escrever script de teste do scheduler**
-- [ ] **Step 2: Executar script com `npx tsx scripts/test-automated-scheduler.ts`**
+- [x] **Step 1: Escrever script de teste do scheduler**
+- [x] **Step 2: Executar script com `npx tsx scripts/test-automated-scheduler.ts`**
   - Expected: Sucesso com log de disparo e transição de status.
 
-- [ ] **Step 3: Commit atômico final**
+- [x] **Step 3: Commit atômico final**
   - `git commit -m "test: add automated scheduler validation test and verify end-to-end"`
