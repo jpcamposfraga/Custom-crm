@@ -24,7 +24,7 @@ Sistema integrado, local e enxuto desenvolvido em TypeScript para coletar leads 
 
 1. Clone o repositório ou navegue até a pasta do projeto:
    ```bash
-   cd crm-jpcamposfraga
+   cd custom-crm
    ```
 
 2. Instale as dependências de todos os workspaces com um único comando:
