@@ -82,8 +82,15 @@ export async function syncLeadsToCrm(
       summary: data?.summary,
     };
   } catch (err: any) {
+    if (err.name === 'AbortError') {
+      return {
+        success: false,
+        offline: false,
+        error: `Tempo limite esgotado (> ${timeoutMs}ms) aguardando resposta do CRM.`,
+      };
+    }
+
     const isConnRefused =
-      err.name === 'AbortError' ||
       err.code === 'ECONNREFUSED' ||
       err.cause?.code === 'ECONNREFUSED' ||
       err.message?.includes('fetch failed') ||

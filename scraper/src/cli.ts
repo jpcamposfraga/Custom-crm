@@ -31,7 +31,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     .option('-s, --saida <caminho>', 'Caminho do arquivo CSV de saída')
     .option('--no-headless', 'Executar navegador de forma visível (útil para depuração)')
     .option('--no-crm', 'Não sincronizar automaticamente com o CRM (apenas salvar CSV local)')
-    .option('--crm-url <url>', 'URL base do servidor CRM', 'http://localhost:3000');
+    .option('--crm-url <url>', 'URL base do servidor CRM', process.env.CRM_URL || 'http://localhost:3000');
 
   program.parse(argv);
   const opts = program.opts<CliOptions>();
@@ -41,7 +41,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
   let busca = opts.busca;
   let limite = parseInt(opts.limite || '20', 10);
   let saida = opts.saida;
-  const headless = opts.headless !== undefined ? opts.headless !== 'false' : true;
+  const headless = opts.headless !== false && (opts.headless as any) !== 'false';
 
   // If no direct search term and no nicho provided, prompt interactively
   if (!busca && !nicho) {

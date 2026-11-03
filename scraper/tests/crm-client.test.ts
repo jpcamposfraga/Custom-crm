@@ -71,6 +71,19 @@ describe('Scraper CRM Client (Direct Sync)', () => {
     expect(result.error).toContain('offline');
   });
 
+  it('distinguishes timeout (AbortError) from server offline', async () => {
+    const abortErr = new Error('The operation was aborted');
+    abortErr.name = 'AbortError';
+
+    globalThis.fetch = vi.fn().mockRejectedValue(abortErr);
+
+    const result = await syncLeadsToCrm(mockLeads, { crmUrl: 'http://localhost:3000' });
+
+    expect(result.success).toBe(false);
+    expect(result.offline).toBe(false);
+    expect(result.error).toContain('Tempo limite');
+  });
+
   it('handles non-200 responses from CRM API', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

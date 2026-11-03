@@ -1,8 +1,8 @@
 import { getDatabase } from '../db';
 import { leads, cards, boards, columns } from '../db/schema';
-import { parseCsv, normalizePhone } from './csv-parser';
+import { parseCsv, normalizeRawLead } from './csv-parser';
 import type { ParsedLead, ImportAnalysisResult, ImportOptions } from '../types';
-import { eq, inArray, asc } from 'drizzle-orm';
+import { eq, inArray, asc, desc } from 'drizzle-orm';
 import crypto from 'crypto';
 
 export interface ImportSummary {
@@ -18,59 +18,14 @@ export interface IngestionSummary {
   cardsCreated: number;
 }
 
-export function normalizeRawLead(raw: Record<string, any>): ParsedLead {
-  const name = String(raw.name || raw.Nome || raw.nome || raw.title || raw.empresa || raw.Empresa || '').trim();
-  const phone = String(raw.phone || raw.Telefone || raw.telefone || raw.celular || raw.Celular || '').trim();
-  const normalized_phone = raw.normalized_phone || raw.normalizedPhone
-    ? normalizePhone(String(raw.normalized_phone || raw.normalizedPhone))
-    : normalizePhone(phone);
+export { normalizeRawLead };
 
-  const rawWebsite = raw.website || raw.Website || raw.site || raw.Site || '';
-  const websiteStr = String(rawWebsite).trim();
-  const hasWebsiteExplicit =
-    raw.has_website === 'true' ||
-    raw.has_website === true ||
-    raw.has_website === '1' ||
-    raw.has_website === 1 ||
-    raw.hasWebsite === true ||
-    raw.hasWebsite === 'true' ||
-    raw.hasWebsite === 1 ||
-    raw.hasWebsite === '1';
-
-  const website = websiteStr && websiteStr !== 'null' && websiteStr !== 'undefined' ? websiteStr : null;
-  const has_website = hasWebsiteExplicit || Boolean(website) ? 1 : 0;
-
-  const nicho = String(raw.nicho || raw.Nicho || raw.categoria || raw.category || 'Geral').trim();
-  const rawLocation = raw.location || raw.Location || raw.Cidade || raw.cidade || raw.endereco || raw.Endereco;
-  const location = rawLocation ? String(rawLocation).trim() : null;
-
-  const rawRating = raw.rating || raw.Rating || raw.avaliacao || raw.Avaliacao || raw.Avaliação;
-  const ratingNum = rawRating !== undefined && rawRating !== null ? parseFloat(String(rawRating).replace(',', '.')) : null;
-  const rating = ratingNum !== null && !isNaN(ratingNum) ? ratingNum : null;
-
-  const rawReviews = raw.reviews_count || raw.reviewsCount || raw.ReviewsCount || raw.avaliacoes || raw.Avaliacoes;
-  const reviewsNum = rawReviews !== undefined && rawReviews !== null ? parseInt(String(rawReviews), 10) : null;
-  const reviews_count = reviewsNum !== null && !isNaN(reviewsNum) ? reviewsNum : null;
-
-  const rawGoogleMapsUrl = raw.google_maps_url || raw.googleMapsUrl || raw.GoogleMapsUrl || raw.maps_url || raw.mapsUrl;
-  const google_maps_url = rawGoogleMapsUrl ? String(rawGoogleMapsUrl).trim() : null;
-
-  return {
-    name,
-    phone,
-    normalized_phone,
-    has_website,
-    website,
-    nicho,
-    location,
-    rating,
-    reviews_count,
-    google_maps_url,
-  };
-}
-
-export async function parseAndAnalyzeCsv(csvContent: string): Promise<ImportAnalysisResult> {
-  const parsed = parseCsv(csvContent);
+/**
+ * Shared analysis and deduplication logic against SQLite and intra-batch duplicates.
+ */
+export async function analyzeParsedLeads(
+  parsed: ParsedLead[]
+): Promise<ImportAnalysisResult> {
   if (parsed.length === 0) {
     return {
       totalRows: 0,
@@ -81,12 +36,11 @@ export async function parseAndAnalyzeCsv(csvContent: string): Promise<ImportAnal
 
   const { db } = getDatabase();
 
-  // Collect phones to query DB
-  const validPhones = Array.from(new Set(parsed.map(p => p.normalized_phone).filter(Boolean)));
+  // 1. Collect phones to query DB
+  const validPhones = Array.from(new Set(parsed.map((p) => p.normalized_phone).filter(Boolean)));
   const existingMap = new Map<string, string>(); // normalized_phone -> leadId
 
   if (validPhones.length > 0) {
-    // Query in batches of 200 for SQLite limits safety
     const chunkSize = 200;
     for (let i = 0; i < validPhones.length; i += chunkSize) {
       const chunk = validPhones.slice(i, i + chunkSize);
@@ -101,14 +55,30 @@ export async function parseAndAnalyzeCsv(csvContent: string): Promise<ImportAnal
     }
   }
 
-  const seenInFile = new Set<string>();
+  // 2. Query DB for existing phoneless leads by name + nicho
+  const phonelessLeads = parsed.filter((l) => !l.normalized_phone && l.name);
+  const existingPhonelessNames = new Map<string, string>(); // nameKey -> leadId
+
+  if (phonelessLeads.length > 0) {
+    const existingInDb = await db
+      .select({ id: leads.id, name: leads.name, nicho: leads.nicho })
+      .from(leads)
+      .where(eq(leads.normalized_phone, ''));
+
+    for (const row of existingInDb) {
+      const key = `${row.name.trim().toLowerCase()}::${row.nicho.trim().toLowerCase()}`;
+      existingPhonelessNames.set(key, row.id);
+    }
+  }
+
+  const seenPhonesInFile = new Set<string>();
   const seenNamesInFile = new Set<string>();
   const newLeads: ParsedLead[] = [];
   const duplicateLeads: ImportAnalysisResult['duplicateLeads'] = [];
 
   for (const lead of parsed) {
     const phone = lead.normalized_phone;
-    const nameKey = (lead.name || '').trim().toLowerCase() + '::' + (lead.nicho || '').trim().toLowerCase();
+    const nameKey = `${(lead.name || '').trim().toLowerCase()}::${(lead.nicho || '').trim().toLowerCase()}`;
 
     if (!phone) {
       if (seenNamesInFile.has(nameKey)) {
@@ -118,12 +88,23 @@ export async function parseAndAnalyzeCsv(csvContent: string): Promise<ImportAnal
         });
         continue;
       }
+
+      if (existingPhonelessNames.has(nameKey)) {
+        duplicateLeads.push({
+          lead,
+          existingLeadId: existingPhonelessNames.get(nameKey),
+          reason: 'db_duplicate',
+        });
+        seenNamesInFile.add(nameKey);
+        continue;
+      }
+
       seenNamesInFile.add(nameKey);
       newLeads.push(lead);
       continue;
     }
 
-    if (seenInFile.has(phone)) {
+    if (seenPhonesInFile.has(phone)) {
       duplicateLeads.push({
         lead,
         reason: 'file_duplicate',
@@ -137,11 +118,11 @@ export async function parseAndAnalyzeCsv(csvContent: string): Promise<ImportAnal
         existingLeadId: existingMap.get(phone),
         reason: 'db_duplicate',
       });
-      seenInFile.add(phone);
+      seenPhonesInFile.add(phone);
       continue;
     }
 
-    seenInFile.add(phone);
+    seenPhonesInFile.add(phone);
     seenNamesInFile.add(nameKey);
     newLeads.push(lead);
   }
@@ -151,6 +132,11 @@ export async function parseAndAnalyzeCsv(csvContent: string): Promise<ImportAnal
     newLeads,
     duplicateLeads,
   };
+}
+
+export async function parseAndAnalyzeCsv(csvContent: string): Promise<ImportAnalysisResult> {
+  const parsed = parseCsv(csvContent);
+  return analyzeParsedLeads(parsed);
 }
 
 export async function executeImport(
@@ -183,45 +169,71 @@ export async function executeImport(
   let cardsCreated = 0;
   const now = new Date().toISOString();
 
-  for (let i = 0; i < leadsToInsert.length; i++) {
-    const lead = leadsToInsert[i];
-    const leadId = crypto.randomUUID();
-
-    await db.insert(leads).values({
-      id: leadId,
-      name: lead.name,
-      phone: lead.phone,
-      normalized_phone: lead.normalized_phone,
-      has_website: lead.has_website,
-      website: lead.website,
-      nicho: lead.nicho,
-      location: lead.location,
-      status: 'novo',
-      notes: lead.rating ? `Avaliação: ${lead.rating} (${lead.reviews_count || 0} avaliações)` : null,
-      created_at: now,
-      updated_at: now,
-    });
-    insertedCount++;
-
+  // Execute in an atomic transaction
+  await db.transaction(async (tx) => {
+    let startOrder = 0;
     if (targetBoardId && targetColumnId) {
-      const cardId = crypto.randomUUID();
-      const descParts = [lead.nicho];
-      if (lead.location) descParts.push(lead.location);
-      if (lead.rating) descParts.push(`⭐ ${lead.rating}`);
-
-      await db.insert(cards).values({
-        id: cardId,
-        board_id: targetBoardId,
-        column_id: targetColumnId,
-        lead_id: leadId,
-        title: lead.name,
-        description: descParts.join(' | '),
-        order: i,
-        created_at: now,
-      });
-      cardsCreated++;
+      const [lastCard] = await tx
+        .select({ order: cards.order })
+        .from(cards)
+        .where(eq(cards.column_id, targetColumnId))
+        .orderBy(desc(cards.order))
+        .limit(1);
+      if (lastCard && typeof lastCard.order === 'number') {
+        startOrder = lastCard.order + 1;
+      }
     }
-  }
+
+    for (let i = 0; i < leadsToInsert.length; i++) {
+      const lead = leadsToInsert[i];
+      const leadId = crypto.randomUUID();
+
+      // Build structured notes containing rating and google maps url
+      const noteParts: string[] = [];
+      if (lead.rating !== null && lead.rating !== undefined) {
+        noteParts.push(`Avaliação: ${lead.rating} (${lead.reviews_count ?? 0} avaliações)`);
+      }
+      if (lead.google_maps_url) {
+        noteParts.push(`Maps: ${lead.google_maps_url}`);
+      }
+      const notes = noteParts.length > 0 ? noteParts.join(' | ') : null;
+
+      await tx.insert(leads).values({
+        id: leadId,
+        name: lead.name,
+        phone: lead.phone,
+        normalized_phone: lead.normalized_phone,
+        has_website: lead.has_website,
+        website: lead.website,
+        nicho: lead.nicho,
+        location: lead.location,
+        status: 'novo',
+        notes,
+        created_at: now,
+        updated_at: now,
+      });
+      insertedCount++;
+
+      if (targetBoardId && targetColumnId) {
+        const cardId = crypto.randomUUID();
+        const descParts = [lead.nicho];
+        if (lead.location) descParts.push(lead.location);
+        if (lead.rating !== null && lead.rating !== undefined) descParts.push(`⭐ ${lead.rating}`);
+
+        await tx.insert(cards).values({
+          id: cardId,
+          board_id: targetBoardId,
+          column_id: targetColumnId,
+          lead_id: leadId,
+          title: lead.name,
+          description: descParts.join(' | '),
+          order: startOrder + i,
+          created_at: now,
+        });
+        cardsCreated++;
+      }
+    }
+  });
 
   return {
     insertedCount,
@@ -246,68 +258,13 @@ export async function ingestRawLeads(
     };
   }
 
-  const { db } = getDatabase();
-
-  // Collect phones to query DB
-  const validPhones = Array.from(new Set(normalized.map((p) => p.normalized_phone).filter(Boolean)));
-  const existingMap = new Map<string, string>();
-
-  if (validPhones.length > 0) {
-    const chunkSize = 200;
-    for (let i = 0; i < validPhones.length; i += chunkSize) {
-      const chunk = validPhones.slice(i, i + chunkSize);
-      const existingInDb = await db
-        .select({ id: leads.id, phone: leads.normalized_phone })
-        .from(leads)
-        .where(inArray(leads.normalized_phone, chunk));
-
-      for (const row of existingInDb) {
-        existingMap.set(row.phone, row.id);
-      }
-    }
-  }
-
-  const seenInFile = new Set<string>();
-  const seenNamesInFile = new Set<string>();
-  const leadsToInsert: ParsedLead[] = [];
-  let duplicatesCount = 0;
-
-  for (const lead of normalized) {
-    const phone = lead.normalized_phone;
-    const nameKey = (lead.name || '').trim().toLowerCase() + '::' + (lead.nicho || '').trim().toLowerCase();
-
-    if (!phone) {
-      if (seenNamesInFile.has(nameKey)) {
-        duplicatesCount++;
-        continue;
-      }
-      seenNamesInFile.add(nameKey);
-      leadsToInsert.push(lead);
-      continue;
-    }
-
-    if (seenInFile.has(phone)) {
-      duplicatesCount++;
-      continue;
-    }
-
-    if (existingMap.has(phone)) {
-      duplicatesCount++;
-      seenInFile.add(phone);
-      continue;
-    }
-
-    seenInFile.add(phone);
-    seenNamesInFile.add(nameKey);
-    leadsToInsert.push(lead);
-  }
-
-  const importResult = await executeImport(leadsToInsert, options);
+  const analysis = await analyzeParsedLeads(normalized);
+  const importResult = await executeImport(analysis.newLeads, options);
 
   return {
     totalReceived: rawLeads.length,
     insertedCount: importResult.insertedCount,
-    duplicatesCount,
+    duplicatesCount: analysis.duplicateLeads.length,
     cardsCreated: importResult.cardsCreated,
   };
 }

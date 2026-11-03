@@ -146,4 +146,71 @@ describe('Direct Leads Ingestion & Deduplication', () => {
     expect(data.summary.duplicatesCount).toBe(0);
     expect(data.summary.cardsCreated).toBe(1);
   });
+
+  it('preserves numeric 0 rating and reviewsCount, and stores googleMapsUrl in notes', async () => {
+    const rawLeads = [
+      {
+        name: 'Loja Zero Avaliações',
+        phone: '(19) 97777-1111',
+        normalizedPhone: '19977771111',
+        nicho: 'Varejo',
+        hasWebsite: false,
+        rating: 0,
+        reviewsCount: 0,
+        googleMapsUrl: 'https://maps.google.com/zero',
+      },
+    ];
+
+    const summary = await ingestRawLeads(rawLeads);
+    expect(summary.insertedCount).toBe(1);
+
+    const { db } = getDatabase();
+    const [leadRecord] = await db.select().from(leads).where(eq(leads.normalized_phone, '19977771111'));
+    expect(leadRecord).toBeDefined();
+    expect(leadRecord.notes).toContain('Avaliação: 0');
+    expect(leadRecord.notes).toContain('0 avaliações');
+    expect(leadRecord.notes).toContain('https://maps.google.com/zero');
+  });
+
+  it('detects existing phoneless lead in DB by name and nicho on repeated import', async () => {
+    const { db } = getDatabase();
+
+    // Pre-populate DB with phoneless lead
+    await db.insert(leads).values({
+      id: 'phoneless-lead-1',
+      name: 'Restaurante Sabor Sem Telefone',
+      phone: '',
+      normalized_phone: '',
+      has_website: 0,
+      website: null,
+      nicho: 'Restaurante',
+      location: 'Campinas, SP',
+      status: 'novo',
+      notes: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const batch = [
+      {
+        name: 'Restaurante Sabor Sem Telefone',
+        phone: '',
+        normalizedPhone: '',
+        nicho: 'Restaurante',
+        hasWebsite: false,
+      },
+      {
+        name: 'Outro Restaurante Sem Telefone',
+        phone: '',
+        normalizedPhone: '',
+        nicho: 'Restaurante',
+        hasWebsite: false,
+      },
+    ];
+
+    const summary = await ingestRawLeads(batch);
+    expect(summary.totalReceived).toBe(2);
+    expect(summary.insertedCount).toBe(1); // Only the new one
+    expect(summary.duplicatesCount).toBe(1); // Sabor Sem Telefone is skipped as duplicate
+  });
 });
