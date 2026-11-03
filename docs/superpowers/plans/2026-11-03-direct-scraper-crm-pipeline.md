@@ -1,6 +1,6 @@
 # Direct Scraper-to-CRM Pipeline & CSV Import Fix Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Allow the scraper to send extracted leads directly to the CRM without requiring the user to manually create/export a CSV and upload it, while also fixing the CSV parser delimiter auto-detection so manual imports remain 100% reliable.
 
@@ -50,7 +50,7 @@
 - Consumes: Raw CSV string from user upload or test files.
 - Produces: `parseCsv(csvContent: string): ParsedLead[]` with explicit delimiter detection.
 
-- [ ] **Step 1: Write failing test in `crm/tests/csv-parser.test.ts` for CSV with semicolon delimiter and commas inside quoted addresses/URLs**
+- [x] **Step 1: Write failing test in `crm/tests/csv-parser.test.ts` for CSV with semicolon delimiter and commas inside quoted addresses/URLs**
 
 ```typescript
 it('parses semicolon-delimited CSV with multiple commas inside quotes and URLs without delimiter confusion', () => {
@@ -70,25 +70,25 @@ it('parses semicolon-delimited CSV with multiple commas inside quotes and URLs w
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails or exposes edge cases**
+- [x] **Step 2: Run test to verify it fails or exposes edge cases**
 
 Run: `cd "C:\Users\João\custom-crm\crm"; npx vitest run tests/csv-parser.test.ts`
 Expected: FAIL or verify delimiter parsing.
 
-- [ ] **Step 3: Update `parseCsv` in `crm/src/lib/csv-parser.ts` with explicit delimiter detection**
+- [x] **Step 3: Update `parseCsv` in `crm/src/lib/csv-parser.ts` with explicit delimiter detection**
 
 Detect delimiter by analyzing the header row (`firstLine.includes(';') ? ';' : ','`), and pass `delimiter` option explicitly to `Papa.parse`. Also ensure phone and normalized_phone always default to empty string if missing.
 
-- [ ] **Step 4: Update `parseAndAnalyzeCsv` in `crm/src/lib/deduplicator.ts`**
+- [x] **Step 4: Update `parseAndAnalyzeCsv` in `crm/src/lib/deduplicator.ts`**
 
 Ensure that leads without phones are treated safely without colliding with each other or crashing database queries.
 
-- [ ] **Step 5: Run tests and verify all pass**
+- [x] **Step 5: Run tests and verify all pass**
 
 Run: `cd "C:\Users\João\custom-crm\crm"; npx vitest run tests/csv-parser.test.ts tests/deduplicator.test.ts`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crm/src/lib/csv-parser.ts crm/src/lib/deduplicator.ts crm/tests/csv-parser.test.ts crm/tests/deduplicator.test.ts
@@ -108,16 +108,16 @@ git commit -m "fix(crm): improve csv delimiter detection and empty phone handlin
 - Consumes: `{ leads: Array<Record<string, any>>, options?: ImportOptions }` via `POST /api/leads/import`.
 - Produces: `{ success: true, summary: { totalReceived: number, insertedCount: number, duplicatesCount: number, cardsCreated: number } }`.
 
-- [ ] **Step 1: Write failing test in `crm/tests/direct-import.test.ts`**
+- [x] **Step 1: Write failing test in `crm/tests/direct-import.test.ts`**
 
 Test importing raw lead objects directly (both camelCase and snake_case fields), verifying deduplication against existing database leads, and verifying Kanban card creation.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd "C:\Users\João\custom-crm\crm"; npx vitest run tests/direct-import.test.ts`
 Expected: FAIL (missing direct ingest support in import route/deduplicator)
 
-- [ ] **Step 3: Implement `ingestRawLeads(rawLeads, options)` in `crm/src/lib/deduplicator.ts`**
+- [x] **Step 3: Implement `ingestRawLeads(rawLeads, options)` in `crm/src/lib/deduplicator.ts`**
 
 Map incoming lead fields:
 - `name`: string
@@ -133,16 +133,16 @@ Map incoming lead fields:
 
 Deduplicate against existing `normalized_phone` in DB. Insert new leads, create Kanban cards in default column, and return `{ totalReceived, insertedCount, duplicatesCount, cardsCreated }`.
 
-- [ ] **Step 4: Update `POST /api/leads/import` in `crm/src/app/api/leads/import/route.ts`**
+- [x] **Step 4: Update `POST /api/leads/import` in `crm/src/app/api/leads/import/route.ts`**
 
 Accept `body.leads` or `body.leadsToInsert` or `body.csvContent`. When `body.leads` is supplied, invoke `ingestRawLeads`. Return `{ success: true, summary }`.
 
-- [ ] **Step 5: Run tests and verify all pass**
+- [x] **Step 5: Run tests and verify all pass**
 
 Run: `cd "C:\Users\João\custom-crm\crm"; npx vitest run tests/direct-import.test.ts`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crm/src/lib/deduplicator.ts crm/src/app/api/leads/import/route.ts crm/tests/direct-import.test.ts
@@ -165,19 +165,19 @@ git commit -m "feat(crm): support direct leads ingestion with automatic deduplic
   - `--no-crm`: skip direct CRM sync (only save CSV).
   - `--crm-url <url>`: custom CRM URL (defaults to `http://localhost:3000`).
 
-- [ ] **Step 1: Write failing test in `scraper/tests/crm-client.test.ts`**
+- [x] **Step 1: Write failing test in `scraper/tests/crm-client.test.ts`**
 
 Test `syncLeadsToCrm`:
 1. Successfully sends leads payload to CRM endpoint and returns parsed summary.
 2. Handles CRM offline (`ECONNREFUSED` or fetch rejection) without throwing an uncaught exception, returning `{ success: false, offline: true }`.
 3. Handles non-200 responses with error details.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd "C:\Users\João\custom-crm\scraper"; npx vitest run tests/crm-client.test.ts`
 Expected: FAIL (`crm-client.ts` not found)
 
-- [ ] **Step 3: Implement `scraper/src/crm-client.ts`**
+- [x] **Step 3: Implement `scraper/src/crm-client.ts`**
 
 Implement `syncLeadsToCrm(leads: ScrapedLead[], options?: { crmUrl?: string, timeoutMs?: number })`:
 - Format URL: `${crmUrl}/api/leads/import`
@@ -185,7 +185,7 @@ Implement `syncLeadsToCrm(leads: ScrapedLead[], options?: { crmUrl?: string, tim
 - Catch network connection errors (`ECONNREFUSED`, fetch failed) and return `{ success: false, offline: true, error: string }`.
 - On success (200), return `{ success: true, offline: false, summary: res.summary }`.
 
-- [ ] **Step 4: Update `scraper/src/cli.ts`**
+- [x] **Step 4: Update `scraper/src/cli.ts`**
 
 Add `--no-crm` and `--crm-url <url>` options.
 After crawling and saving the backup CSV file:
@@ -208,12 +208,12 @@ if (opts.crm !== false) {
 }
 ```
 
-- [ ] **Step 5: Run scraper tests and verify all pass**
+- [x] **Step 5: Run scraper tests and verify all pass**
 
 Run: `cd "C:\Users\João\custom-crm\scraper"; npm test`
 Expected: PASS (all tests green)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scraper/src/crm-client.ts scraper/src/cli.ts scraper/tests/crm-client.test.ts
@@ -227,21 +227,21 @@ git commit -m "feat(scraper): add direct crm synchronization with offline fallba
 **Files:**
 - None (verification phase)
 
-- [ ] **Step 1: Run complete CRM test suite**
+- [x] **Step 1: Run complete CRM test suite**
 
 Run: `cd "C:\Users\João\custom-crm\crm"; npm test`
 Expected: All tests pass.
 
-- [ ] **Step 2: Run complete Scraper test suite**
+- [x] **Step 2: Run complete Scraper test suite**
 
 Run: `cd "C:\Users\João\custom-crm\scraper"; npm test`
 Expected: All tests pass.
 
-- [ ] **Step 3: Run production builds on both workspaces**
+- [x] **Step 3: Run production builds on both workspaces**
 
 Run: `cd "C:\Users\João\custom-crm"; npm run scraper:build && npm run crm:build`
 Expected: Clean build with zero TypeScript or Next.js compilation errors.
 
-- [ ] **Step 4: End-to-end integration test with live CRM and mock scraper run**
+- [x] **Step 4: End-to-end integration test with live CRM and mock scraper run**
 
 Verify that executing direct ingest registers leads in DB and Kanban cards, and manual CSV upload also works seamlessly.
