@@ -176,7 +176,39 @@ async function runE2EPipeline() {
   }
   console.log('   ✅ Direct WhatsApp Web & App URLs verified (skips wa.me and populates input box).');
 
-  console.log('\n🎉 ALL 8 PIPELINE VERIFICATION STEPS PASSED SUCCESSFULLY! 🎉\n');
+  // Step 9: Direct Scraper-to-CRM Pipeline (bypassing manual CSV upload)
+  console.log('\n📌 [Step 9] Testing direct Scraper-to-CRM ingestion (bypassing manual CSV upload)...');
+  const { ingestRawLeads } = await import('../crm/src/lib/deduplicator');
+  const directBatch = [
+    {
+      name: 'Clínica Odonto Sorriso', // Already exists from Step 4
+      phone: '(19) 98765-4321',
+      normalizedPhone: '19987654321',
+      nicho: 'Dentista',
+      hasWebsite: true,
+    },
+    {
+      name: 'Novo Escritório Contábil', // Brand new lead
+      phone: '(19) 3211-9988',
+      normalizedPhone: '1932119988',
+      nicho: 'Contabilidade',
+      hasWebsite: false,
+      location: 'Campinas, SP',
+    },
+  ];
+
+  const directSummary = await ingestRawLeads(directBatch);
+  console.log(`   Direct batch received: ${directSummary.totalReceived}`);
+  console.log(`   Inserted count: ${directSummary.insertedCount}`);
+  console.log(`   Duplicates skipped: ${directSummary.duplicatesCount}`);
+  console.log(`   Kanban cards created: ${directSummary.cardsCreated}`);
+
+  if (directSummary.insertedCount !== 1 || directSummary.duplicatesCount !== 1 || directSummary.cardsCreated !== 1) {
+    throw new Error(`❌ Direct ingestion summary mismatch: expected 1 inserted, 1 duplicate, 1 card; got ${JSON.stringify(directSummary)}`);
+  }
+  console.log('   ✅ Direct Scraper-to-CRM pipeline verified with deduplication and Kanban creation.');
+
+  console.log('\n🎉 ALL 9 PIPELINE VERIFICATION STEPS PASSED SUCCESSFULLY! 🎉\n');
 
   // Close database client so Windows releases file handle
   const { client } = getDatabase();
