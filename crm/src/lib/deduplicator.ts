@@ -44,14 +44,23 @@ export async function parseAndAnalyzeCsv(csvContent: string): Promise<ImportAnal
   }
 
   const seenInFile = new Set<string>();
+  const seenNamesInFile = new Set<string>();
   const newLeads: ParsedLead[] = [];
   const duplicateLeads: ImportAnalysisResult['duplicateLeads'] = [];
 
   for (const lead of parsed) {
     const phone = lead.normalized_phone;
+    const nameKey = (lead.name || '').trim().toLowerCase() + '::' + (lead.nicho || '').trim().toLowerCase();
 
     if (!phone) {
-      // If no phone, treat as new lead if name is present
+      if (seenNamesInFile.has(nameKey)) {
+        duplicateLeads.push({
+          lead,
+          reason: 'file_duplicate',
+        });
+        continue;
+      }
+      seenNamesInFile.add(nameKey);
       newLeads.push(lead);
       continue;
     }
@@ -75,6 +84,7 @@ export async function parseAndAnalyzeCsv(csvContent: string): Promise<ImportAnal
     }
 
     seenInFile.add(phone);
+    seenNamesInFile.add(nameKey);
     newLeads.push(lead);
   }
 

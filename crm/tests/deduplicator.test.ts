@@ -84,6 +84,23 @@ describe('CSV Parser & Smart Deduplicator', () => {
       expect(fileDup).toBeDefined();
       expect(fileDup?.lead.name).toBe('Duplicado do Item 1');
     });
+
+    it('handles multiple leads with empty phone numbers without colliding unless name is identical', async () => {
+      const csvContent =
+        'name,phone,nicho,has_website,website,location\n' +
+        '"Clínica Alpha","","Psicologia","false","","São Paulo"\n' +
+        '"Clínica Beta","","Psicologia","false","","São Paulo"\n' +
+        '"Clínica Alpha","","Psicologia","false","","São Paulo"';
+
+      const analysis = await parseAndAnalyzeCsv(csvContent);
+
+      expect(analysis.totalRows).toBe(3);
+      expect(analysis.newLeads.length).toBe(2);
+      expect(analysis.newLeads.map(l => l.name)).toEqual(['Clínica Alpha', 'Clínica Beta']);
+      expect(analysis.duplicateLeads.length).toBe(1);
+      expect(analysis.duplicateLeads[0].lead.name).toBe('Clínica Alpha');
+      expect(analysis.duplicateLeads[0].reason).toBe('file_duplicate');
+    });
   });
 
   describe('executeImport', () => {
