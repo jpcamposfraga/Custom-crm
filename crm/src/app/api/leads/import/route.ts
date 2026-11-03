@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { parseAndAnalyzeCsv, executeImport } from '@/lib/deduplicator';
+import { parseAndAnalyzeCsv, executeImport, ingestRawLeads } from '@/lib/deduplicator';
 import { initDatabase } from '@/db';
 
 export async function POST(request: Request) {
@@ -15,7 +15,14 @@ export async function POST(request: Request) {
       return NextResponse.json(analysis);
     }
 
-    // Execute import
+    // Direct leads array (e.g. from Scraper CLI or direct API sync)
+    const directLeads = body.leads || (Array.isArray(body) ? body : null);
+    if (directLeads && Array.isArray(directLeads)) {
+      const summary = await ingestRawLeads(directLeads, body.options || {});
+      return NextResponse.json({ success: true, summary });
+    }
+
+    // Execute import from pre-analyzed leads or raw csvContent
     let leadsToInsert = body.leadsToInsert;
     if (!leadsToInsert && body.csvContent) {
       const analysis = await parseAndAnalyzeCsv(body.csvContent);
