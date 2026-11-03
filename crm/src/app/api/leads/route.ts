@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDatabase, initDatabase } from '@/db';
-import { leads, cards, columns } from '@/db/schema';
+import { leads, cards, columns, boards } from '@/db/schema';
 import { normalizePhone } from '@/lib/csv-parser';
 import { eq, and, desc, asc, like, or } from 'drizzle-orm';
 import crypto from 'crypto';
@@ -79,9 +79,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Nome e telefone são obrigatórios' }, { status: 400 });
     }
 
+    const normalized_phone = normalizePhone(phone);
+
+    if (normalized_phone && normalized_phone.length >= 8) {
+      const [existing] = await db
+        .select()
+        .from(leads)
+        .where(eq(leads.normalized_phone, normalized_phone))
+        .limit(1);
+
+      if (existing) {
+        return NextResponse.json(
+          {
+            error: `Telefone já cadastrado no CRM para o lead "${existing.name}".`,
+            existingLead: existing,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const normalized_phone = normalizePhone(phone);
     const has_website = body.website ? 1 : (body.has_website ? 1 : 0);
 
     const newLead = {
@@ -100,7 +119,43 @@ export async function POST(request: Request) {
     };
 
     await db.insert(leads).values(newLead);
-    return NextResponse.json({ success: true, lead: newLead });
+
+    // Link card in the default board's first column
+    let cardId: string | null = null;
+    const [defaultBoard] = await db
+      .select()
+      .from(boards)
+      .where(eq(boards.type, 'leads'))
+      .limit(1);
+
+    const targetBoard = defaultBoard || (await db.select().from(boards).limit(1))[0];
+    if (targetBoard) {
+      const [firstCol] = await db
+        .select()
+        .from(columns)
+        .where(eq(columns.board_id, targetBoard.id))
+        .orderBy(asc(columns.order))
+        .limit(1);
+
+      if (firstCol) {
+        cardId = crypto.randomUUID();
+        const descParts = [newLead.nicho];
+        if (newLead.location) descParts.push(newLead.location);
+
+        await db.insert(cards).values({
+          id: cardId,
+          board_id: targetBoard.id,
+          column_id: firstCol.id,
+          lead_id: id,
+          title: newLead.name,
+          description: descParts.join(' | '),
+          order: 0,
+          created_at: now,
+        });
+      }
+    }
+
+    return NextResponse.json({ success: true, lead: newLead, cardId });
   } catch (err: any) {
     console.error('Create lead error:', err);
     return NextResponse.json({ error: err.message || 'Error creating lead' }, { status: 500 });

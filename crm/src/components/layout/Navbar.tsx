@@ -3,13 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Table, UploadCloud, Calendar, Settings } from 'lucide-react';
+import { LayoutGrid, Table, UploadCloud, Calendar, Settings, UserPlus } from 'lucide-react';
 import { PhoneChecker } from '../search/PhoneChecker';
 import { CsvImportModal } from '../import/CsvImportModal';
+import { CreateLeadModal } from '../leads/CreateLeadModal';
 
 export function Navbar() {
   const pathname = usePathname();
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   // Background scheduler sync heartbeat (every 20s while CRM is open)
   useEffect(() => {
@@ -71,6 +73,14 @@ export function Navbar() {
             <PhoneChecker />
 
             <button
+              onClick={() => setIsCreateOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
+            >
+              <UserPlus className="w-4 h-4 text-blue-400" />
+              <span className="hidden md:inline">Novo Lead</span>
+            </button>
+
+            <button
               onClick={() => setIsImportOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
             >
@@ -80,6 +90,14 @@ export function Navbar() {
           </div>
         </div>
       </header>
+
+      <CreateLeadModal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        onSuccess={() => {
+          window.location.reload();
+        }}
+      />
 
       <CsvImportModal
         isOpen={isImportOpen}

@@ -5,7 +5,8 @@ import type { Lead, LeadStatus } from '@/types';
 import { LeadFilters } from '@/components/leads/LeadFilters';
 import { LeadsTable } from '@/components/leads/LeadsTable';
 import { WhatsAppModal } from '@/components/whatsapp/WhatsAppModal';
-import { Users, UserCheck, TrendingUp, Clock, AlertCircle } from 'lucide-react';
+import { CreateLeadModal } from '@/components/leads/CreateLeadModal';
+import { Users, UserCheck, TrendingUp, Clock, AlertCircle, UserPlus } from 'lucide-react';
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -22,6 +23,9 @@ export default function LeadsPage() {
 
   // WhatsApp modal state
   const [selectedWhatsAppLead, setSelectedWhatsAppLead] = useState<Lead | null>(null);
+
+  // Create lead modal state
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
@@ -112,8 +116,16 @@ export default function LeadsPage() {
           </p>
         </div>
 
-        {/* Quick stats chips */}
-        <div className="flex items-center gap-3 text-xs">
+        {/* Actions & Quick stats chips */}
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all whitespace-nowrap"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Novo Lead</span>
+          </button>
+
           <div className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm flex items-center gap-2">
             <Users className="w-3.5 h-3.5 text-blue-600" />
             <span className="text-slate-500">Total:</span>
@@ -169,6 +181,14 @@ export default function LeadsPage() {
           onClose={() => setSelectedWhatsAppLead(null)}
         />
       )}
+
+      {/* Create Lead Modal */}
+      <CreateLeadModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={() => fetchLeads()}
+        availableNiches={niches}
+      />
     </div>
   );
 }
