@@ -4,6 +4,7 @@ import prompts from 'prompts';
 import { crawlGoogleMaps } from './crawler.js';
 import { exportLeadsToCsv } from './csv-exporter.js';
 import { buildSearchQuery } from './query-builder.js';
+import { syncLeadsToCrm } from './crm-client.js';
 
 interface CliOptions {
   nicho?: string;
@@ -12,6 +13,8 @@ interface CliOptions {
   limite?: string;
   saida?: string;
   headless?: string;
+  crm?: boolean;
+  crmUrl?: string;
 }
 
 export async function runCli(argv: string[] = process.argv): Promise<void> {
@@ -26,7 +29,9 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     .option('-b, --busca <termo>', 'Termo de busca completo (sobrescreve nicho e região)')
     .option('-l, --limite <numero>', 'Quantidade máxima de resultados a extrair', '20')
     .option('-s, --saida <caminho>', 'Caminho do arquivo CSV de saída')
-    .option('--no-headless', 'Executar navegador de forma visível (útil para depuração)');
+    .option('--no-headless', 'Executar navegador de forma visível (útil para depuração)')
+    .option('--no-crm', 'Não sincronizar automaticamente com o CRM (apenas salvar CSV local)')
+    .option('--crm-url <url>', 'URL base do servidor CRM', 'http://localhost:3000');
 
   program.parse(argv);
   const opts = program.opts<CliOptions>();
@@ -117,8 +122,28 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
 
     const exportedFile = await exportLeadsToCsv(leads, saida);
     console.log(`\n💾 Arquivo salvo com sucesso em:`);
-    console.log(`   ${exportedFile}\n`);
-    console.log(`💡 Para importar esses leads no seu CRM, utilize a aba de importação na interface web.`);
+    console.log(`   ${exportedFile}`);
+
+    // Direct synchronization with CRM
+    if (opts.crm !== false) {
+      const crmUrl = opts.crmUrl || process.env.CRM_URL || 'http://localhost:3000';
+      console.log(`\n📡 Sincronizando leads diretamente com o CRM (${crmUrl})...`);
+      const syncResult = await syncLeadsToCrm(leads, { crmUrl });
+
+      if (syncResult.success && syncResult.summary) {
+        console.log(`✅ ${syncResult.summary.insertedCount} novos leads importados diretamente para o CRM!`);
+        console.log(`📋 ${syncResult.summary.cardsCreated} cards criados no Kanban.`);
+        if (syncResult.summary.duplicatesCount > 0) {
+          console.log(`⚠️  ${syncResult.summary.duplicatesCount} lead(s) duplicados foram ignorados (já existiam no CRM).`);
+        }
+      } else if (syncResult.offline) {
+        console.log(`ℹ️  CRM offline em ${crmUrl}. O arquivo CSV foi salvo e poderá ser importado quando o CRM estiver ativo.`);
+      } else {
+        console.warn(`⚠️  Aviso: Não foi possível sincronizar com o CRM: ${syncResult.error}`);
+      }
+    } else {
+      console.log(`\n💡 Sincronização direta desativada (--no-crm). Para importar, use o arquivo CSV acima na interface web.`);
+    }
   } catch (error) {
     console.error('\n❌ Ocorreu um erro durante a raspagem:', error);
     process.exit(1);
