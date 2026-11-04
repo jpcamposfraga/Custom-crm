@@ -37,7 +37,8 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
         }
 
         const isCanvasVisible = await this.activePage.locator('canvas').isVisible({ timeout: 1000 }).catch(() => false);
-        if (isCanvasVisible) {
+        const hasDataRef = await this.activePage.locator('div[data-ref]').isVisible({ timeout: 1000 }).catch(() => false);
+        if (isCanvasVisible || hasDataRef) {
           this.currentStatus = 'waiting_qr';
           await this.captureQrCode();
           return { status: 'waiting_qr', qrCode: this.latestQrCode };
@@ -51,10 +52,27 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
   private async captureQrCode(): Promise<void> {
     if (!this.activePage || this.activePage.isClosed()) return;
     try {
+      // Check if QR code expired and needs refresh click
+      const reloadBtn = this.activePage.locator(
+        'button:has-text("Recarregar"), button:has-text("Clique para recarregar"), span[data-icon="refresh"], div[data-ref] button, [data-testid="qrcode"] button'
+      ).first();
+      if (await reloadBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+        await reloadBtn.click().catch(() => {});
+        await this.activePage.waitForTimeout(1000);
+      }
+
       const canvas = this.activePage.locator('canvas').first();
-      if (await canvas.isVisible({ timeout: 2000 })) {
+      if (await canvas.isVisible({ timeout: 2000 }).catch(() => false)) {
         const buffer = await canvas.screenshot();
         this.latestQrCode = `data:image/png;base64,${buffer.toString('base64')}`;
+        return;
+      }
+
+      const qrContainer = this.activePage.locator('div[data-ref], [data-testid="qrcode"], [data-testid="link-device-qrcode-alt-linking-tc"]').first();
+      if (await qrContainer.isVisible({ timeout: 1000 }).catch(() => false)) {
+        const buffer = await qrContainer.screenshot();
+        this.latestQrCode = `data:image/png;base64,${buffer.toString('base64')}`;
+        return;
       }
     } catch (e) {
       console.warn('[WhatsApp Playwright] Falha ao capturar screenshot do QR Code:', e);
@@ -85,15 +103,17 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
         if (isLoggedIn) {
           this.currentStatus = 'connected';
           this.latestQrCode = null;
+          await persistWhatsAppConnectedState(true);
           console.log('[WhatsApp Playwright] ✅ Conectado com sucesso ao WhatsApp Web!');
           clearInterval(checkInterval);
           this.isCheckingAuth = false;
           return;
         }
 
-        // Refresh QR Code if still on canvas
+        // Refresh QR Code if still on canvas or data-ref
         const hasCanvas = await this.activePage.locator('canvas').isVisible({ timeout: 1000 }).catch(() => false);
-        if (hasCanvas) {
+        const hasDataRef = await this.activePage.locator('div[data-ref]').isVisible({ timeout: 1000 }).catch(() => false);
+        if (hasCanvas || hasDataRef) {
           this.currentStatus = 'waiting_qr';
           await this.captureQrCode();
         }
@@ -114,14 +134,23 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
 
       this.context = await chromium.launchPersistentContext(SESSION_DIR, {
         headless: true,
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        viewport: { width: 1280, height: 800 },
+        locale: 'pt-BR',
+        timezoneId: 'America/Sao_Paulo',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
+          '--disable-blink-features=AutomationControlled',
           '--no-first-run',
           '--no-zygote',
         ],
+      });
+
+      await this.context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
       });
     }
 
@@ -131,21 +160,58 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
       await this.activePage.goto('https://web.whatsapp.com', { waitUntil: 'domcontentloaded', timeout: 45000 });
     }
 
-    // Wait for either logged in pane or QR code canvas
-    try {
-      const result = await Promise.race([
-        this.activePage.waitForSelector('div[id="pane-side"]', { timeout: 15000 }).then(() => 'logged_in').catch(() => null),
-        this.activePage.waitForSelector('canvas', { timeout: 15000 }).then(() => 'qr_ready').catch(() => null),
-      ]);
+    // Wait up to 25s for either logged-in pane or QR code canvas / data-ref
+    const startTime = Date.now();
+    const TIMEOUT_MS = 25000;
 
-      if (result === 'logged_in') {
+    while (Date.now() - startTime < TIMEOUT_MS) {
+      if (!this.activePage || this.activePage.isClosed()) break;
+
+      // Check if already authenticated
+      const isChatListVisible = await this.activePage
+        .locator('div[id="pane-side"]')
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      if (isChatListVisible) {
         this.currentStatus = 'connected';
         this.latestQrCode = null;
+        await persistWhatsAppConnectedState(true);
         return { status: 'connected', qrCode: null };
       }
-    } catch (e) {}
 
-    // If canvas found or not yet logged in:
+      // Check if redirected to /login/ splash and shortcut link is available
+      if (this.activePage.url().includes('/login/')) {
+        const qrShortcut = this.activePage
+          .locator('[data-testid="link_device_qr_phone_number_shortcut_link"]')
+          .first();
+        if (await qrShortcut.isVisible({ timeout: 500 }).catch(() => false)) {
+          await qrShortcut.click().catch(() => {});
+        }
+      }
+
+      // Check for QR code canvas or data-ref container
+      const hasCanvas = await this.activePage
+        .locator('canvas')
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      const hasDataRef = await this.activePage
+        .locator('div[data-ref]')
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+
+      if (hasCanvas || hasDataRef) {
+        await this.captureQrCode();
+        if (this.latestQrCode) {
+          this.currentStatus = 'waiting_qr';
+          this.startLoginWatcher();
+          return { status: 'waiting_qr', qrCode: this.latestQrCode };
+        }
+      }
+
+      await this.activePage.waitForTimeout(1000);
+    }
+
+    // Fallback capture
     await this.captureQrCode();
     this.currentStatus = 'waiting_qr';
     this.startLoginWatcher();
@@ -248,15 +314,58 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
   }
 }
 
-// Active driver instance
-let activeDriver: WhatsAppAutomationDriver = new PlaywrightWhatsAppDriver();
+export async function persistWhatsAppConnectedState(connected: boolean): Promise<void> {
+  try {
+    await initDatabase();
+    const { db } = getDatabase();
+    const now = new Date().toISOString();
+    await db
+      .insert(settings)
+      .values({
+        key: 'whatsapp_session_connected',
+        value: connected ? 'true' : 'false',
+        updated_at: now,
+      })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: connected ? 'true' : 'false', updated_at: now },
+      });
+
+    if (connected) {
+      await db
+        .insert(settings)
+        .values({
+          key: 'auto_send_whatsapp',
+          value: 'true',
+          updated_at: now,
+        })
+        .onConflictDoUpdate({
+          target: settings.key,
+          set: { value: 'true', updated_at: now },
+        });
+    }
+  } catch (e) {
+    console.warn('[WhatsApp Playwright] Erro ao persistir estado no SQLite:', e);
+  }
+}
+
+// Active driver singleton on globalThis to survive Next.js module reloads
+const globalForWhatsApp = globalThis as unknown as {
+  whatsappDriver?: WhatsAppAutomationDriver;
+};
+
+export let activeDriver: WhatsAppAutomationDriver =
+  globalForWhatsApp.whatsappDriver ?? new PlaywrightWhatsAppDriver();
+globalForWhatsApp.whatsappDriver = activeDriver;
 
 export function setAutomationDriver(driver: WhatsAppAutomationDriver) {
   activeDriver = driver;
+  globalForWhatsApp.whatsappDriver = driver;
 }
 
 export function resetAutomationDriver() {
   activeDriver = new PlaywrightWhatsAppDriver();
+  globalForWhatsApp.whatsappDriver = activeDriver;
 }
 
 export async function getWhatsAppSessionStatus(): Promise<{
@@ -272,11 +381,23 @@ export async function getWhatsAppSessionStatus(): Promise<{
     .from(settings)
     .where(eq(settings.key, 'auto_send_whatsapp'));
 
+  const [connRow] = await db
+    .select()
+    .from(settings)
+    .where(eq(settings.key, 'whatsapp_session_connected'));
+
   const autoSendEnabled = settingRow?.value === 'true';
+  const dbConnected = connRow?.value === 'true';
   const driverStatus = await activeDriver.getStatus();
 
+  // If driver in memory says disconnected but DB shows connected, report connected
+  const effectiveStatus: WhatsAppSessionStatus =
+    driverStatus.status === 'connected' || (driverStatus.status === 'disconnected' && dbConnected)
+      ? 'connected'
+      : driverStatus.status;
+
   return {
-    status: driverStatus.status,
+    status: effectiveStatus,
     qrCode: driverStatus.qrCode,
     autoSendEnabled,
   };
@@ -290,7 +411,8 @@ export async function startWhatsAppSession(): Promise<{
 }
 
 export async function logoutWhatsAppSession(): Promise<void> {
-  return activeDriver.logout();
+  await activeDriver.logout();
+  await persistWhatsAppConnectedState(false);
 }
 
 export async function sendHeadlessMessage(

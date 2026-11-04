@@ -48,6 +48,9 @@ describe('WhatsApp Headless Automation (Playwright)', () => {
     sentMessages.length = 0;
     setAutomationDriver(mockDriver);
     await initDatabase();
+    const { db } = getDatabase();
+    await db.delete(settings).where(eq(settings.key, 'whatsapp_session_connected'));
+    await db.delete(settings).where(eq(settings.key, 'auto_send_whatsapp'));
   });
 
   afterEach(async () => {
@@ -134,6 +137,41 @@ describe('WhatsApp Headless Automation (Playwright)', () => {
     const status = await getWhatsAppSessionStatus();
     expect(status.status).toBe('disconnected');
     expect(status.qrCode).toBeNull();
+  });
+
+  it('recognizes isAutoSendEligible when session is persisted in database settings', async () => {
+    const { db } = getDatabase();
+    // Persist session connection in SQLite settings
+    await db
+      .insert(settings)
+      .values([
+        { key: 'auto_send_whatsapp', value: 'true', updated_at: new Date().toISOString() },
+        { key: 'whatsapp_session_connected', value: 'true', updated_at: new Date().toISOString() },
+      ])
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: 'true' },
+      });
+
+    // Mock driver in memory is disconnected, but DB has persisted connection
+    mockStatus = 'disconnected';
+    const isEligible = await isAutoSendEligible();
+    expect(isEligible).toBe(true);
+  });
+
+  it('clears whatsapp_session_connected in database on logout', async () => {
+    const { db } = getDatabase();
+    await db
+      .insert(settings)
+      .values({ key: 'whatsapp_session_connected', value: 'true', updated_at: new Date().toISOString() })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: 'true' },
+      });
+
+    await logoutWhatsAppSession();
+    const [row] = await db.select().from(settings).where(eq(settings.key, 'whatsapp_session_connected'));
+    expect(row?.value).toBe('false');
   });
 
   it('PlaywrightWhatsAppDriver defaults to disconnected and rejects send when disconnected', async () => {
