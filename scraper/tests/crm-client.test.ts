@@ -107,4 +107,45 @@ describe('Scraper CRM Client (Direct Sync)', () => {
     expect(result.summary?.totalReceived).toBe(0);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
+
+  it('automatically discovers active CRM port when port 3000 is down and port 3001 is active', async () => {
+    const mockSummary = {
+      totalReceived: 1,
+      insertedCount: 1,
+      duplicatesCount: 0,
+      cardsCreated: 1,
+    };
+
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string, opts?: any) => {
+      // Probing port 3000 -> offline
+      if (url.includes(':3000')) {
+        const err = new Error('connect ECONNREFUSED 127.0.0.1:3000');
+        (err as any).code = 'ECONNREFUSED';
+        throw err;
+      }
+      // Probing port 3001 GET -> active
+      if (url === 'http://localhost:3001/api/leads/import' && opts?.method === 'GET') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ status: 'ok', service: 'crm-leads-import' }),
+        };
+      }
+      // Actual POST import to 3001
+      if (url === 'http://localhost:3001/api/leads/import' && opts?.method === 'POST') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, summary: mockSummary }),
+        };
+      }
+      throw new Error(`Unexpected url: ${url}`);
+    });
+
+    const result = await syncLeadsToCrm(mockLeads);
+
+    expect(result.success).toBe(true);
+    expect(result.resolvedUrl).toBe('http://localhost:3001');
+    expect(result.summary).toEqual(mockSummary);
+  });
 });

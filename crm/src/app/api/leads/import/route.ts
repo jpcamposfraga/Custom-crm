@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { parseAndAnalyzeCsv, executeImport, ingestRawLeads } from '@/lib/deduplicator';
 import { initDatabase } from '@/db';
 
+export async function GET() {
+  return NextResponse.json({
+    status: 'ok',
+    service: 'crm-leads-import',
+    timestamp: new Date().toISOString(),
+  });
+}
+
 export async function POST(request: Request) {
   try {
     await initDatabase();

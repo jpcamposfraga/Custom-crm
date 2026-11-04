@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { getDatabase, initDatabase } from '../src/db/index';
 import { leads, boards, columns, cards } from '../src/db/schema';
 import { ingestRawLeads } from '../src/lib/deduplicator';
-import { POST } from '../src/app/api/leads/import/route';
+import { POST, GET } from '../src/app/api/leads/import/route';
 import { eq } from 'drizzle-orm';
 
 describe('Direct Leads Ingestion & Deduplication', () => {
@@ -145,6 +145,14 @@ describe('Direct Leads Ingestion & Deduplication', () => {
     expect(data.summary.insertedCount).toBe(1);
     expect(data.summary.duplicatesCount).toBe(0);
     expect(data.summary.cardsCreated).toBe(1);
+  });
+
+  it('handles GET /api/leads/import health check for port auto-discovery', async () => {
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.status).toBe('ok');
+    expect(data.service).toBe('crm-leads-import');
   });
 
   it('preserves numeric 0 rating and reviewsCount, and stores googleMapsUrl in notes', async () => {

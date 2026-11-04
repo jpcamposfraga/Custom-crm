@@ -12,7 +12,7 @@ interface CliOptions {
   busca?: string;
   limite?: string;
   saida?: string;
-  headless?: string;
+  headless?: boolean | string;
   crm?: boolean;
   crmUrl?: string;
 }
@@ -31,7 +31,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     .option('-s, --saida <caminho>', 'Caminho do arquivo CSV de saída')
     .option('--no-headless', 'Executar navegador de forma visível (útil para depuração)')
     .option('--no-crm', 'Não sincronizar automaticamente com o CRM (apenas salvar CSV local)')
-    .option('--crm-url <url>', 'URL base do servidor CRM', process.env.CRM_URL || 'http://localhost:3000');
+    .option('--crm-url <url>', 'URL base do servidor CRM (auto-detecta porta se localhost)', process.env.CRM_URL);
 
   program.parse(argv);
   const opts = program.opts<CliOptions>();
@@ -41,7 +41,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
   let busca = opts.busca;
   let limite = parseInt(opts.limite || '20', 10);
   let saida = opts.saida;
-  const headless = opts.headless !== false && (opts.headless as any) !== 'false';
+  const headless = opts.headless !== false && opts.headless !== 'false';
 
   // If no direct search term and no nicho provided, prompt interactively
   if (!busca && !nicho) {
@@ -126,18 +126,19 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
 
     // Direct synchronization with CRM
     if (opts.crm !== false) {
-      const crmUrl = opts.crmUrl || process.env.CRM_URL || 'http://localhost:3000';
-      console.log(`\n📡 Sincronizando leads diretamente com o CRM (${crmUrl})...`);
+      const crmUrl = opts.crmUrl || process.env.CRM_URL;
+      console.log(`\n📡 Sincronizando leads diretamente com o CRM...`);
       const syncResult = await syncLeadsToCrm(leads, { crmUrl });
+      const targetUrl = syncResult.resolvedUrl || crmUrl || 'http://localhost:3000';
 
       if (syncResult.success && syncResult.summary) {
-        console.log(`✅ ${syncResult.summary.insertedCount} novos leads importados diretamente para o CRM!`);
+        console.log(`✅ ${syncResult.summary.insertedCount} novos leads importados diretamente para o CRM (${targetUrl})!`);
         console.log(`📋 ${syncResult.summary.cardsCreated} cards criados no Kanban.`);
         if (syncResult.summary.duplicatesCount > 0) {
           console.log(`⚠️  ${syncResult.summary.duplicatesCount} lead(s) duplicados foram ignorados (já existiam no CRM).`);
         }
       } else if (syncResult.offline) {
-        console.log(`ℹ️  CRM offline em ${crmUrl}. O arquivo CSV foi salvo e poderá ser importado quando o CRM estiver ativo.`);
+        console.log(`ℹ️  CRM offline (${syncResult.error || targetUrl}). O arquivo CSV foi salvo e poderá ser importado quando o CRM estiver ativo.`);
       } else {
         console.warn(`⚠️  Aviso: Não foi possível sincronizar com o CRM: ${syncResult.error}`);
       }
