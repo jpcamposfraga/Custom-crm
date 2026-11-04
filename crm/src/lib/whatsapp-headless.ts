@@ -254,13 +254,26 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
   }
 
   private async executeSend(phone: string, message: string): Promise<{ success: boolean; error?: string }> {
+    // 1. Lazy initialize: if context or page is not open, launch/attach using persistent session
+    if (!this.context || !this.activePage || this.activePage.isClosed()) {
+      await initDatabase();
+      const { db } = getDatabase();
+      const [connRow] = await db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, 'whatsapp_session_connected'));
+
+      const isConfiguredConnected = connRow?.value === 'true' || this.currentStatus === 'connected';
+
+      if (!isConfiguredConnected || !fs.existsSync(SESSION_DIR)) {
+        return { success: false, error: 'WhatsApp não está conectado. Conecte pelo painel de configurações.' };
+      }
+      await this.start();
+    }
+
     const status = await this.getStatus();
     if (status.status !== 'connected') {
       return { success: false, error: 'WhatsApp não está conectado. Conecte pelo painel de configurações.' };
-    }
-
-    if (!this.context || !this.activePage || this.activePage.isClosed()) {
-      await this.start();
     }
 
     if (!this.context || !this.activePage) {

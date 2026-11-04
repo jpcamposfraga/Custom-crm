@@ -183,4 +183,39 @@ describe('WhatsApp Headless Automation (Playwright)', () => {
     expect(sendRes.success).toBe(false);
     expect(sendRes.error).toContain('não está conectado');
   });
+
+  it('PlaywrightWhatsAppDriver lazy initializes via start() when DB shows connected', async () => {
+    const { db } = getDatabase();
+    await db
+      .insert(settings)
+      .values({ key: 'whatsapp_session_connected', value: 'true', updated_at: new Date().toISOString() })
+      .onConflictDoUpdate({ target: settings.key, set: { value: 'true' } });
+
+    const realDriver = new PlaywrightWhatsAppDriver();
+    let startCalled = false;
+    // Mock internal start to avoid full browser launch in unit test
+    (realDriver as any).start = async () => {
+      startCalled = true;
+      (realDriver as any).currentStatus = 'connected';
+      (realDriver as any).context = {} as any;
+      (realDriver as any).activePage = { isClosed: () => false } as any;
+      return { status: 'connected', qrCode: null };
+    };
+    (realDriver as any).getStatus = async () => ({ status: (realDriver as any).currentStatus, qrCode: null });
+
+    // Mock page.goto and page actions
+    let executedInnerSend = false;
+    (realDriver as any).executeSend = async () => {
+      if (!(realDriver as any).context) {
+        await (realDriver as any).start();
+      }
+      executedInnerSend = true;
+      return { success: true };
+    };
+
+    const res = await realDriver.send('19987654321', 'Teste lazy');
+    expect(startCalled).toBe(true);
+    expect(executedInnerSend).toBe(true);
+    expect(res.success).toBe(true);
+  });
 });
