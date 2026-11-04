@@ -293,33 +293,53 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
     try {
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
 
-      // Check for send button or invalid number popup with catch to prevent unhandled rejection
-      const sendButtonSelector = 'button[data-testid="compose-btn-send"], button[aria-label="Enviar"], span[data-icon="send"]';
-      const errorPopupSelector = 'div[data-testid="popup-contents"], div[data-animate-modal-popup="true"]';
+      const sendButtonSelector =
+        'button[data-testid="compose-btn-send"], [data-testid="send"], button[aria-label="Enviar"], button[aria-label="Send"], footer button:has(span[data-icon="send"]), span[data-icon="send"]';
+      const composeInputSelector =
+        'footer div[contenteditable="true"], div[data-testid="conversation-compose-box-input"], div[role="textbox"][contenteditable="true"]';
+      const errorPopupSelector =
+        'div[data-testid="popup-contents"], div[data-animate-modal-popup="true"], [data-testid="confirm-popup"]';
 
+      // Wait up to 30s for chat compose elements or invalid number popup
       const detected = await Promise.race([
-        page.waitForSelector(sendButtonSelector, { timeout: 25000 }).then(() => 'send_btn').catch(() => null),
-        page.waitForSelector(errorPopupSelector, { timeout: 25000 }).then(() => 'invalid_number').catch(() => null),
+        page.waitForSelector(sendButtonSelector, { timeout: 30000 }).then(() => 'send_btn').catch(() => null),
+        page.waitForSelector(composeInputSelector, { timeout: 30000 }).then(() => 'composer_ready').catch(() => null),
+        page.waitForSelector(errorPopupSelector, { timeout: 30000 }).then(() => 'invalid_number').catch(() => null),
       ]);
 
       if (detected === 'invalid_number') {
         return { success: false, error: 'O número de telefone não possui conta no WhatsApp.' };
       }
 
-      if (!detected || detected !== 'send_btn') {
-        // Fallback: try pressing Enter on active element
-        await page.keyboard.press('Enter');
-      } else {
-        const sendBtn = page.locator(sendButtonSelector).first();
-        if (await sendBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await sendBtn.click();
-        } else {
+      if (!detected) {
+        return { success: false, error: 'Tempo limite ao carregar conversa ou botão de envio no WhatsApp Web.' };
+      }
+
+      // 1. Try clicking the send button if visible
+      let messageSent = false;
+      const sendBtn = page.locator(sendButtonSelector).first();
+      if (await sendBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await sendBtn.click().catch(() => {});
+        messageSent = true;
+      }
+
+      // 2. If button was not clicked, focus the composer input explicitly and press Enter
+      if (!messageSent) {
+        const composer = page.locator(composeInputSelector).first();
+        if (await composer.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await composer.focus().catch(() => {});
           await page.keyboard.press('Enter');
+          messageSent = true;
         }
       }
 
-      // Small pause to allow websocket transmission
-      await page.waitForTimeout(2000);
+      if (!messageSent) {
+        // Last resort: press Enter
+        await page.keyboard.press('Enter');
+      }
+
+      // Pause to allow websocket transmission and chat synchronization
+      await page.waitForTimeout(2500);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Tempo limite excedido ao tentar enviar a mensagem.' };
