@@ -40,4 +40,26 @@ describe('Settings API & DB', () => {
       .set({ value: 'web', updated_at: now })
       .where(eq(settings.key, 'whatsapp_platform'));
   });
+
+  it('can store and retrieve auto_send_whatsapp and whatsapp_session_connected', async () => {
+    await initDatabase();
+    const { db } = getDatabase();
+
+    const now = new Date().toISOString();
+    await db
+      .insert(settings)
+      .values([
+        { key: 'auto_send_whatsapp', value: 'true', updated_at: now },
+        { key: 'whatsapp_session_connected', value: 'true', updated_at: now },
+      ])
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: 'true', updated_at: now },
+      });
+
+    const rows = await db.select().from(settings);
+    const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    expect(map['auto_send_whatsapp']).toBe('true');
+    expect(map['whatsapp_session_connected']).toBe('true');
+  });
 });

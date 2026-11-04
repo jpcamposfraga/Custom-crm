@@ -49,6 +49,11 @@ export default function SettingsPage() {
             if (data.status === 'connected') {
               setConnectionStatus('connected');
               setQrCode(null);
+              if (data.autoSendEnabled !== undefined) {
+                setAutoSendEnabled(data.autoSendEnabled);
+              } else {
+                setAutoSendEnabled(true);
+              }
             } else if (data.status === 'waiting_qr' && data.qrCode) {
               setQrCode(data.qrCode);
             }
@@ -142,6 +147,9 @@ export default function SettingsPage() {
         setConnectionStatus(data.status);
         if (data.qrCode) {
           setQrCode(data.qrCode);
+        }
+        if (data.status === 'connected') {
+          setAutoSendEnabled(true);
         }
       }
     } catch (err) {

@@ -95,6 +95,9 @@ export function WhatsAppModal({ isOpen, lead, onClose, onSent }: WhatsAppModalPr
         const statusData = await resStatus.json();
         const eligible = statusData.autoSendEnabled && statusData.status === 'connected';
         setAutoSendConfigured(eligible);
+        if (eligible) {
+          setSendHeadless(true);
+        }
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
