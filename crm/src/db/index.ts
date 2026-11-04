@@ -164,6 +164,13 @@ export async function initDatabase(): Promise<void> {
         content: 'Olá {nome}, tudo bem? Conseguiram avaliar a mensagem anterior sobre a solução para sua empresa de {nicho}?',
         created_at: now,
       },
+      {
+        id: 'tmpl-psicologas',
+        title: 'Proposta para Psicólogas (Sem Site)',
+        content:
+          'Oi [nome], tudo bem? Eu estava procurando por psicólogas em [local] e achei o perfil da sua empresa, porém, notei que você não possui um site próprio para o seu negócio. Eu crio websites para negócios locais e adoraria fazer um para a sua marca. Têm interesse em conversar por whatsapp mesmo para alinharmos suas expectativas?',
+        created_at: now,
+      },
     ];
 
     for (const tmpl of defaultTemplates) {

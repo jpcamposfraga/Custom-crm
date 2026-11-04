@@ -10,10 +10,18 @@ export function interpolateTemplate(
     nome: 'você',
     nicho: 'seu segmento',
     cidade: 'sua região',
+    local: 'sua região',
   };
 
-  result = result.replace(/\{(\w+)\}/g, (match, key) => {
-    const val = vars[key];
+  const resolvedVars: Record<string, string | null | undefined> = {
+    ...vars,
+    local: vars.local || vars.cidade,
+    cidade: vars.cidade || vars.local,
+  };
+
+  // Matches either {tag} or [tag]
+  result = result.replace(/[{\[](\w+)[}\]]/g, (match, key) => {
+    const val = resolvedVars[key];
     if (val && typeof val === 'string' && val.trim()) {
       return val.trim();
     }

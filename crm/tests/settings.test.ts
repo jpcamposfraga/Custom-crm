@@ -1,9 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { getDatabase, initDatabase } from '../src/db';
 import { settings } from '../src/db/schema';
 import { eq } from 'drizzle-orm';
 
 describe('Settings API & DB', () => {
+  beforeEach(async () => {
+    await initDatabase();
+    const { db } = getDatabase();
+    await db
+      .insert(settings)
+      .values({ key: 'whatsapp_platform', value: 'web', updated_at: new Date().toISOString() })
+      .onConflictDoUpdate({ target: settings.key, set: { value: 'web' } });
+  });
+
   it('initializes default whatsapp_platform setting as "web"', async () => {
     await initDatabase();
     const { db } = getDatabase();

@@ -129,6 +129,7 @@ export function WhatsAppModal({ isOpen, lead, onClose, onSent }: WhatsAppModalPr
       nome: currentLead.name,
       nicho: currentLead.nicho,
       cidade: city,
+      local: city,
     });
     setMessage(interpolated);
   }

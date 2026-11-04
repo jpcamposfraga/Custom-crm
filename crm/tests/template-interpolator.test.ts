@@ -14,6 +14,20 @@ describe('WhatsApp Template Interpolator & URL Generator', () => {
     expect(result).toBe('Olá Dr. João, vi sua clínica de Odontologia em Campinas!');
   });
 
+  it('interpolates brackets [nome] and [local] interchangeably with {nome} and {cidade}', () => {
+    const template =
+      'Oi [nome], tudo bem? Eu estava procurando por psicólogas em [local] e achei o perfil da sua empresa, porém, notei que você não possui um site próprio para o seu negócio.';
+    const vars = {
+      nome: 'Dra. Ana',
+      cidade: 'Campinas',
+    };
+
+    const result = interpolateTemplate(template, vars);
+    expect(result).toBe(
+      'Oi Dra. Ana, tudo bem? Eu estava procurando por psicólogas em Campinas e achei o perfil da sua empresa, porém, notei que você não possui um site próprio para o seu negócio.'
+    );
+  });
+
   it('handles missing variables gracefully without leaving raw braces', () => {
     const template = 'Olá {nome}! Vi sua empresa de {nicho} em {cidade}.';
     const vars = {

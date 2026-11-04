@@ -16,8 +16,19 @@ import {
   RefreshCw,
   LogOut,
   Power,
+  FileText,
+  Plus,
+  Trash2,
+  Sparkles,
 } from 'lucide-react';
 import type { WhatsAppPlatform } from '@/lib/template-interpolator';
+
+interface MessageTemplate {
+  id: string;
+  title: string;
+  content: string;
+  created_at: string;
+}
 
 export default function SettingsPage() {
   const [platform, setPlatform] = useState<WhatsAppPlatform>('web');
@@ -32,6 +43,13 @@ export default function SettingsPage() {
 
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+
+  // Templates state
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [isAddingTemplate, setIsAddingTemplate] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newContent, setNewContent] = useState('');
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
 
   useEffect(() => {
     fetchInitialData();
@@ -92,10 +110,53 @@ export default function SettingsPage() {
           setAutoSendEnabled(statusData.autoSendEnabled);
         }
       }
+
+      // 3. Fetch message templates
+      const resTemplates = await fetch('/api/templates');
+      if (resTemplates.ok) {
+        const tmplData = await resTemplates.json();
+        setTemplates(tmplData.templates || []);
+      }
     } catch (err) {
       console.error('Error fetching settings/status:', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleCreateTemplate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTitle.trim() || !newContent.trim()) return;
+    setCreatingTemplate(true);
+    try {
+      const res = await fetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle.trim(), content: newContent.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates((prev) => [...prev, data.template]);
+        setNewTitle('');
+        setNewContent('');
+        setIsAddingTemplate(false);
+      }
+    } catch (err) {
+      console.error('Error creating template:', err);
+    } finally {
+      setCreatingTemplate(false);
+    }
+  }
+
+  async function handleDeleteTemplate(id: string) {
+    if (!window.confirm('Tem certeza que deseja excluir este modelo de mensagem?')) return;
+    try {
+      const res = await fetch(`/api/templates?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setTemplates((prev) => prev.filter((t) => t.id !== id));
+      }
+    } catch (err) {
+      console.error('Error deleting template:', err);
     }
   }
 
@@ -443,6 +504,119 @@ export default function SettingsPage() {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+
+          {/* Card: Message Templates */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2 text-base font-bold text-slate-900">
+                  <FileText className="w-5 h-5 text-indigo-600" />
+                  <h2>Modelos de Mensagem (Templates)</h2>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Gerencie os modelos pré-definidos para abordar seus leads. As tags <code>[nome]</code>, <code>[local]</code> (ou <code>[cidade]</code>) e <code>[nicho]</code> são substituídas automaticamente pelos dados reais de cada contato.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAddingTemplate(!isAddingTemplate)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all shrink-0 self-start sm:self-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {isAddingTemplate ? 'Cancelar' : 'Novo Modelo'}
+              </button>
+            </div>
+
+            {/* Create Template Form */}
+            {isAddingTemplate && (
+              <form onSubmit={handleCreateTemplate} className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-3 animate-in fade-in">
+                <div className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  Criar Novo Modelo
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Título do Modelo
+                  </label>
+                  <input
+                    type="text"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="Ex: Proposta para Psicólogas"
+                    required
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Conteúdo da Mensagem
+                  </label>
+                  <textarea
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    rows={4}
+                    placeholder="Ex: Oi [nome], tudo bem? Encontrei sua clínica em [local]..."
+                    required
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 leading-relaxed font-sans"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Dica: use <code>[nome]</code> para o nome do lead, <code>[local]</code> ou <code>[cidade]</code> para a localização, e <code>[nicho]</code> para o segmento.
+                  </p>
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingTemplate(false)}
+                    className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-lg"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creatingTemplate}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
+                  >
+                    {creatingTemplate ? 'Salvando...' : 'Salvar Modelo'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Template List */}
+            <div className="space-y-3">
+              {templates.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-4">Nenhum modelo cadastrado.</p>
+              ) : (
+                templates.map((tmpl) => (
+                  <div
+                    key={tmpl.id}
+                    className="p-4 rounded-xl border border-slate-200/90 bg-slate-50/50 hover:bg-slate-50 transition-colors space-y-2 relative group"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900">{tmpl.title}</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                          {tmpl.id}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTemplate(tmpl.id)}
+                        className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-white transition-colors"
+                        title="Excluir Modelo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap bg-white p-3 rounded-lg border border-slate-200/60">
+                      {tmpl.content}
+                    </p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
