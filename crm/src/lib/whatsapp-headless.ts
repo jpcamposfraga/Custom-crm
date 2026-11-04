@@ -281,9 +281,10 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
     }
 
     const cleanDigits = phone.replace(/\D/g, '');
-    const targetPhone = cleanDigits.length <= 11 && !cleanDigits.startsWith('55')
-      ? `55${cleanDigits}`
-      : cleanDigits;
+    const targetPhone =
+      cleanDigits.length === 10 || cleanDigits.length === 11
+        ? `55${cleanDigits}`
+        : cleanDigits;
 
     // Reuse the single active page to prevent WhatsApp "Use here" multi-tab conflict
     const page = this.activePage;
@@ -315,15 +316,19 @@ export class PlaywrightWhatsAppDriver implements WhatsAppAutomationDriver {
         return { success: false, error: 'Tempo limite ao carregar conversa ou botão de envio no WhatsApp Web.' };
       }
 
-      // 1. Try clicking the send button if visible
+      // 1. Try clicking the send button if visible with strict error trapping
       let messageSent = false;
       const sendBtn = page.locator(sendButtonSelector).first();
       if (await sendBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await sendBtn.click().catch(() => {});
-        messageSent = true;
+        try {
+          await sendBtn.click({ timeout: 2500 });
+          messageSent = true;
+        } catch {
+          messageSent = false;
+        }
       }
 
-      // 2. If button was not clicked, focus the composer input explicitly and press Enter
+      // 2. If button click failed or wasn't available, focus composer input and press Enter
       if (!messageSent) {
         const composer = page.locator(composeInputSelector).first();
         if (await composer.isVisible({ timeout: 2000 }).catch(() => false)) {

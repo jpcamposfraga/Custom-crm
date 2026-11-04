@@ -131,9 +131,23 @@ export async function checkAndTriggerDueMessages(
         const headlessResult = await sendHeadlessMessage(phone, item.message);
         if (!headlessResult.success) {
           console.warn(
-            `[Scheduler] Falha no envio headless (${headlessResult.error}). Executando fallback via sistema operacional.`
+            `[Scheduler] Falha no envio headless (${headlessResult.error}).`
           );
-          await activeUrlLauncher(url);
+          if (
+            headlessResult.error?.includes('não possui conta') ||
+            headlessResult.error?.includes('inválido')
+          ) {
+            // Cancel message because number has no WhatsApp account
+            await db
+              .update(scheduledMessages)
+              .set({ status: 'cancelado' })
+              .where(eq(scheduledMessages.id, item.id));
+            errors.push(`Lead ${item.lead_name || phone}: ${headlessResult.error}`);
+            continue;
+          } else {
+            console.warn('[Scheduler] Executando fallback via sistema operacional.');
+            await activeUrlLauncher(url);
+          }
         }
       } else {
         console.log(
