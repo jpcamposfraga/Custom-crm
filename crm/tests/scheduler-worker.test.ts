@@ -26,12 +26,20 @@ describe('Scheduler Worker (Singleton & Sequential Queue)', () => {
       launchedUrls.push(url);
     });
     await initDatabase();
+    const { db } = getDatabase();
+    await db.delete(scheduledMessages);
+    await db.delete(settings).where(eq(settings.key, 'auto_send_whatsapp'));
+    await db.delete(settings).where(eq(settings.key, 'whatsapp_session_connected'));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     resetUrlLauncher();
     resetAutomationDriver();
     stopSchedulerWorker();
+    const { db } = getDatabase();
+    await db.delete(scheduledMessages);
+    await db.delete(settings).where(eq(settings.key, 'auto_send_whatsapp'));
+    await db.delete(settings).where(eq(settings.key, 'whatsapp_session_connected'));
   });
 
   it('correctly calculates isMessageDue', () => {

@@ -61,5 +61,9 @@ describe('Settings API & DB', () => {
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     expect(map['auto_send_whatsapp']).toBe('true');
     expect(map['whatsapp_session_connected']).toBe('true');
+
+    // Cleanup to prevent polluting other test suites
+    await db.delete(settings).where(eq(settings.key, 'auto_send_whatsapp'));
+    await db.delete(settings).where(eq(settings.key, 'whatsapp_session_connected'));
   });
 });
