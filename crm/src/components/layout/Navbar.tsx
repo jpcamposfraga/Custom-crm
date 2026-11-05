@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Table, UploadCloud, Calendar, Settings, UserPlus } from 'lucide-react';
+import { LayoutGrid, Table, UploadCloud, Calendar, Settings, UserPlus, Compass } from 'lucide-react';
 import { PhoneChecker } from '../search/PhoneChecker';
 import { CsvImportModal } from '../import/CsvImportModal';
 import { CreateLeadModal } from '../leads/CreateLeadModal';
@@ -29,6 +29,7 @@ export function Navbar() {
   const navItems = [
     { label: 'Tabela de Leads', href: '/leads', icon: Table },
     { label: 'Kanban Funil', href: '/kanban', icon: LayoutGrid },
+    { label: 'Extrair Leads', href: '/scraper', icon: Compass },
     { label: 'Agendamentos', href: '/scheduled', icon: Calendar },
     { label: 'Configurações', href: '/settings', icon: Settings },
   ];
